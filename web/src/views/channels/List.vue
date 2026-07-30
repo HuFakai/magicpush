@@ -12,29 +12,38 @@
     </div>
 
     <!-- 渠道列表 -->
+    <!-- 渠道卡片：桌面端三列（约 1/3 宽），移动端单列 -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       <div
         v-for="channel in channels"
         :key="channel.id"
-        class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md transition-shadow"
+        class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 hover:shadow-md transition-shadow flex flex-col"
       >
+        <!-- 卡片头部：图标 + 名称 + 操作菜单 -->
         <div class="flex items-start justify-between mb-4">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
             <div
               :class="[
-                'w-10 h-10 rounded-lg flex items-center justify-center',
+                'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
                 getChannelColor(channel.channel_type)
               ]"
             >
               <component :is="getChannelIcon(channel.channel_type)" class="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h3 class="font-semibold text-gray-900 dark:text-white">{{ channel.name }}</h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h3 class="font-semibold text-gray-900 dark:text-white truncate">{{ channel.name }}</h3>
+                <!-- 小爱音箱播放模式标签 -->
+                <el-tag v-if="channel.channel_type === 'misound' && getMisoundBadge(channel)" size="small" type="warning" effect="plain" class="ml-1">
+                  {{ getMisoundBadge(channel) }}
+                </el-tag>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {{ getChannelTypeName(channel.channel_type) }}
               </p>
             </div>
           </div>
+          <!-- 操作菜单 -->
           <el-dropdown @command="(cmd) => handleCommand(cmd, channel)">
             <el-button text>
               <MoreVertical class="w-4 h-4" />
@@ -74,15 +83,25 @@
           </el-dropdown>
         </div>
 
-        <!-- 配置信息 -->
-        <div class="space-y-2 mb-4">
+        <!-- 配置信息：双列紧凑布局，右侧列右对齐 -->
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-4 flex-1">
           <div
-            v-for="(value, key) in getDisplayConfig(channel)"
-            :key="key"
-            class="flex items-center text-sm gap-2"
+            v-for="(item, index) in getDisplayConfigEntries(channel)"
+            :key="item.key"
+            :class="[
+              'flex items-center text-sm min-w-0 gap-1',
+              index % 2 === 1 ? 'justify-end text-right' : 'justify-start text-left'
+            ]"
           >
-            <span class="text-gray-500 dark:text-gray-400 whitespace-nowrap flex-shrink-0">{{ key }}:</span>
-            <span class="text-gray-700 dark:text-gray-300 break-all min-w-0">{{ value }}</span>
+            <span class="text-gray-500 dark:text-gray-400 flex-shrink-0">{{ item.key }}</span>
+            <span class="text-gray-400 dark:text-gray-500 flex-shrink-0">:</span>
+            <span
+              :class="[
+                'text-gray-700 dark:text-gray-300 truncate',
+                index % 2 === 1 ? 'text-right' : 'text-left'
+              ]"
+              :title="String(item.value)"
+            >{{ item.value }}</span>
           </div>
         </div>
 
@@ -101,8 +120,8 @@
           </span>
         </div>
 
-        <!-- 状态 -->
-        <div class="flex items-center justify-between">
+        <!-- 卡片底部：状态 + 开关 -->
+        <div class="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-gray-700">
           <el-tag :type="channel.is_active ? 'success' : 'info'" size="small">
             {{ channel.is_active ? '已启用' : '已禁用' }}
           </el-tag>
@@ -562,16 +581,46 @@ const getDisplayConfig = (channel) => {
     }
     return displayConfig
   }
+  // 小爱音箱：精简展示，避免把所有扩展字段铺满卡片
+  if (channel.channel_type === 'misound') {
+    const config = channel.config || {}
+    if (config.userId) displayConfig['小米ID'] = config.userId
+    if (config.passToken) displayConfig['PassToken'] = '********'
+    if (config.did) displayConfig['设备'] = config.did
+    if (config.ttsMode) displayConfig['TTS'] = config.ttsMode
+    if (config.startVolume !== undefined && config.startVolume !== '' && config.startVolume !== null) {
+      displayConfig['开始音量'] = config.startVolume
+    }
+    if (config.endVolume !== undefined && config.endVolume !== '' && config.endVolume !== null) {
+      displayConfig['结束音量'] = config.endVolume
+    }
+    const playCount = Number(config.playCount) || 1
+    if (playCount > 1) displayConfig['播放次数'] = playCount
+    const playInterval = Number(config.playInterval) || 0
+    if (playInterval > 0) displayConfig['间隔(秒)'] = playInterval
+    if (config.audioUrl) displayConfig['音频'] = config.audioUrl
+    return displayConfig
+  }
   const type = channelTypes.value.find(t => t.type === channel.channel_type)
   if (type) {
     type.configFields.forEach(field => {
+      // 跳过提示/链接等非展示字段
+      if (field.type === 'hint' || field.type === 'links' || field.name?.startsWith('_')) return
       const value = channel.config[field.name]
-      if (value) {
+      if (value !== undefined && value !== null && value !== '') {
         displayConfig[field.label] = field.type === 'password' ? '********' : value
       }
     })
   }
   return displayConfig
+}
+
+/**
+ * 将展示配置转为有序数组，便于双列布局与右对齐
+ */
+const getDisplayConfigEntries = (channel) => {
+  const displayConfig = getDisplayConfig(channel)
+  return Object.entries(displayConfig).map(([key, value]) => ({ key, value }))
 }
 
 const getClawbotQuota = (channel) => {
@@ -584,6 +633,25 @@ const getClawbotQuota = (channel) => {
   const m = remainMin % 60
   const remainText = h > 0 ? `剩余 ${h}小时${m}分钟` : `剩余 ${m}分钟`
   return { sendCount: config.sendCount || 0, remainText }
+}
+
+/**
+ * 获取小爱音箱渠道的播放模式标签
+ * 显示「音频」或「TTS」，多次播放时附带次数，配置了开始音量也一并展示
+ */
+const getMisoundBadge = (channel) => {
+  const config = channel.config
+  if (!config) return ''
+  const parts = []
+  parts.push(config.audioUrl ? '音频' : 'TTS')
+  const count = Number(config.playCount) || 1
+  if (count > 1) {
+    parts.push(`×${count}`)
+  }
+  if (config.startVolume !== undefined && config.startVolume !== '' && config.startVolume !== null) {
+    parts.push(`音量${config.startVolume}`)
+  }
+  return parts.join(' · ')
 }
 
 const loadData = async () => {

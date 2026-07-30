@@ -87,6 +87,21 @@ class MisoundController {
   }
 
   /**
+   * 从请求体中提取小爱音箱扩展播放配置
+   * 空值保持为空，由渠道 validate 与 send 侧做默认处理
+   */
+  static _extractPlaybackConfig(body = {}) {
+    return {
+      startVolume: body.startVolume,
+      endVolume: body.endVolume,
+      playCount: body.playCount,
+      playInterval: body.playInterval,
+      audioUrl: body.audioUrl,
+      endVolumeDelay: body.endVolumeDelay,
+    };
+  }
+
+  /**
    * 确认绑定并创建渠道
    *
    * POST /api/channels/misound/qr/confirm
@@ -96,6 +111,7 @@ class MisoundController {
   static async confirmBind(req, res) {
     try {
       const { userId, passToken, did, name, ttsMode } = req.body;
+      const playbackConfig = MisoundController._extractPlaybackConfig(req.body);
 
       if (!userId || !passToken) {
         return ResponseUtil.badRequest(res, '缺少登录凭证');
@@ -104,7 +120,7 @@ class MisoundController {
         return ResponseUtil.badRequest(res, '请输入设备名称');
       }
 
-      // 创建渠道，配置中存储扫码获取的凭证
+      // 创建渠道，配置中存储扫码获取的凭证与播放增强参数
       const channel = await ChannelService.createChannel(req.user.userId, {
         channelType: 'misound',
         name: name || '小爱音箱',
@@ -113,6 +129,7 @@ class MisoundController {
           passToken,
           did,
           ttsMode: ttsMode || 'auto',
+          ...playbackConfig,
         },
       });
 
@@ -140,6 +157,7 @@ class MisoundController {
     try {
       const channelId = parseInt(req.params.channelId);
       const { userId, passToken, did, ttsMode } = req.body;
+      const playbackConfig = MisoundController._extractPlaybackConfig(req.body);
 
       if (!userId || !passToken) {
         return ResponseUtil.badRequest(res, '缺少登录凭证');
@@ -151,6 +169,7 @@ class MisoundController {
           passToken,
           did: did || '',
           ttsMode: ttsMode || 'auto',
+          ...playbackConfig,
         },
       });
 

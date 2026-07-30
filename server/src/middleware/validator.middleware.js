@@ -167,13 +167,21 @@ const pushMessageValidation = [
     .isLength({ max: 200 })
     .withMessage('标题不能超过200个字符'),
 
+  // content 默认可空：小爱音箱可仅用 audioUrl 推送；其他渠道仍建议传 content
   body('content')
-    .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('消息内容不能为空')
-    .isLength({ max: 5000 })
-    .withMessage('消息内容不能超过5000个字符'),
+    .optional({ nullable: true })
+    .custom((value, { req }) => {
+      const content = value == null ? '' : String(value);
+      const source = req.method === 'GET' ? req.query : req.body;
+      const audioUrl = source && source.audioUrl;
+      if (!content.trim() && !audioUrl) {
+        throw new Error('消息内容不能为空（小爱音箱可仅传 audioUrl）');
+      }
+      if (content.length > 5000) {
+        throw new Error('消息内容不能超过5000个字符');
+      }
+      return true;
+    }),
 
   body('type')
     .optional()
@@ -185,6 +193,24 @@ const pushMessageValidation = [
     .isObject()
     .withMessage('extraData 必须是对象'),
 
+  // 小爱音箱可选覆盖字段
+  body('volume')
+    .optional()
+    .isInt({ min: 0, max: 100 })
+    .withMessage('volume 必须是 0-100 的整数'),
+  body('playCount')
+    .optional()
+    .isInt({ min: 1, max: 10 })
+    .withMessage('playCount 必须是 1-10 的整数'),
+  body('playInterval')
+    .optional()
+    .isFloat({ min: 0, max: 300 })
+    .withMessage('playInterval 必须是 0-300 的数字'),
+  body('audioUrl')
+    .optional()
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('audioUrl 长度不能超过2000'),
   handleValidationErrors,
 ];
 

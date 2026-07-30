@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="visible"
     :title="mode === 'rebind' ? '重新绑定小爱音箱' : '绑定小爱音箱'"
-    width="500px"
+    width="520px"
     :close-on-click-modal="false"
     :close-on-press-escape="step !== 'success'"
     :show-close="step !== 'polling'"
@@ -132,6 +132,81 @@
             auto=智能选择最优方式；command=仅用MiOT指令；default=仅用MiNA默认链路
           </p>
         </el-form-item>
+
+        <el-form-item label="开始音量">
+          <el-input
+            v-model="startVolume"
+            type="number"
+            min="0"
+            max="100"
+            placeholder="0-100，留空表示不调节"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            播报前设置的音量。留空则不修改音箱当前音量
+          </p>
+        </el-form-item>
+
+        <el-form-item label="结束音量">
+          <el-input
+            v-model="endVolume"
+            type="number"
+            min="0"
+            max="100"
+            placeholder="0-100，留空表示不调节"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            播报结束后设置的音量。留空则不修改
+          </p>
+        </el-form-item>
+
+        <el-form-item label="播放次数">
+          <el-input
+            v-model="playCount"
+            type="number"
+            min="1"
+            max="10"
+            placeholder="默认 1，最大 10"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            同一条消息重复播放的次数，默认 1
+          </p>
+        </el-form-item>
+
+        <el-form-item label="播放间隔（秒）">
+          <el-input
+            v-model="playInterval"
+            type="number"
+            min="0"
+            max="300"
+            placeholder="默认 0"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            多次播放时两次之间的等待秒数
+          </p>
+        </el-form-item>
+
+        <el-form-item label="在线音频 URL">
+          <el-input
+            v-model="audioUrl"
+            placeholder="https://example.com/alert.mp3"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            填写后优先播放该音频，不再播报推送文本；须为公网 http(s) 直链
+          </p>
+        </el-form-item>
+
+        <el-form-item label="结束音量延迟（秒）">
+          <el-input
+            v-model="endVolumeDelay"
+            type="number"
+            min="0"
+            max="300"
+            placeholder="留空=自动估算"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            设置结束音量前的等待秒数。留空则按 TTS 文本长度自动估算
+          </p>
+        </el-form-item>
       </el-form>
     </div>
 
@@ -231,6 +306,13 @@ const credentials = ref({})
 const deviceName = ref('')
 const channelName = ref('小爱音箱')
 const ttsMode = ref('auto')
+// 播放增强配置（均为可选）
+const startVolume = ref('')
+const endVolume = ref('')
+const playCount = ref('1')
+const playInterval = ref('0')
+const audioUrl = ref('')
+const endVolumeDelay = ref('')
 const binding = ref(false)
 const boundDeviceName = ref('')
 
@@ -404,6 +486,24 @@ async function doPoll() {
 }
 
 /**
+ * 组装可选播放配置；空字符串转为 undefined，避免后端写入空串干扰校验时仍可留空
+ */
+function buildPlaybackPayload() {
+  const optionalNumberOrUndefined = (rawValue) => {
+    const trimmed = String(rawValue ?? '').trim()
+    return trimmed === '' ? undefined : trimmed
+  }
+  return {
+    startVolume: optionalNumberOrUndefined(startVolume.value),
+    endVolume: optionalNumberOrUndefined(endVolume.value),
+    playCount: optionalNumberOrUndefined(playCount.value) ?? '1',
+    playInterval: optionalNumberOrUndefined(playInterval.value) ?? '0',
+    audioUrl: String(audioUrl.value || '').trim() || undefined,
+    endVolumeDelay: optionalNumberOrUndefined(endVolumeDelay.value),
+  }
+}
+
+/**
  * 确认绑定
  */
 async function handleConfirm() {
@@ -424,6 +524,7 @@ async function handleConfirm() {
         passToken: credentials.value.passToken,
         did,
         ttsMode: ttsMode.value,
+        ...buildPlaybackPayload(),
       })
     } else {
       res = await confirmMiBind({
@@ -432,6 +533,7 @@ async function handleConfirm() {
         did,
         name: channelName.value || '小爱音箱',
         ttsMode: ttsMode.value,
+        ...buildPlaybackPayload(),
       })
     }
 
@@ -476,6 +578,12 @@ function cleanup() {
   deviceName.value = ''
   channelName.value = '小爱音箱'
   ttsMode.value = 'auto'
+  startVolume.value = ''
+  endVolume.value = ''
+  playCount.value = '1'
+  playInterval.value = '0'
+  audioUrl.value = ''
+  endVolumeDelay.value = ''
   binding.value = false
   boundDeviceName.value = ''
   errorMsg.value = ''

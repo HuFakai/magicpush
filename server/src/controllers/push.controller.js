@@ -8,6 +8,18 @@ const getRealIP = require('../utils/ip');
  */
 class PushController {
   /**
+   * 从请求源中提取小爱音箱可选覆盖字段（仅 misound 渠道识别，其他渠道忽略）
+   */
+  static _extractMisoundOverrides(source = {}) {
+    return {
+      volume: source.volume,
+      audioUrl: source.audioUrl,
+      playCount: source.playCount,
+      playInterval: source.playInterval,
+    };
+  }
+
+  /**
    * 通过接口令牌推送
    */
   static async pushByToken(req, res) {
@@ -27,10 +39,18 @@ class PushController {
 
       // 支持 POST body 或 GET query 参数
       const source = req.method === 'GET' ? req.query : req.body;
-      const { title, content, type = 'text', extraData } = source;
+      const { title, type = 'text', extraData } = source;
+      // content 可空：小爱音箱可仅传 audioUrl
+      const content = source.content == null ? '' : source.content;
       const url = source.url || '';
+      const misoundOverrides = PushController._extractMisoundOverrides(source);
 
-      const result = await PushService.pushByToken(token, { title, content, type, url, extraData }, getRealIP(req), req.requestId);
+      const result = await PushService.pushByToken(
+        token,
+        { title, content, type, url, extraData, ...misoundOverrides },
+        getRealIP(req),
+        req.requestId
+      );
 
       if (result.success) {
         return ResponseUtil.success(res, result, '推送成功');
@@ -49,13 +69,15 @@ class PushController {
   static async pushByEndpoint(req, res) {
     try {
       const endpointId = parseInt(req.params.endpointId);
-      const { title, content, type = 'text', extraData } = req.body;
+      const { title, type = 'text', extraData } = req.body;
+      const content = req.body.content == null ? '' : req.body.content;
       const url = req.body.url || '';
+      const misoundOverrides = PushController._extractMisoundOverrides(req.body);
 
       const result = await PushService.pushByEndpoint(
         endpointId,
         req.user.userId,
-        { title, content, type, url, extraData },
+        { title, content, type, url, extraData, ...misoundOverrides },
         getRealIP(req),
         req.requestId
       );
@@ -80,13 +102,15 @@ class PushController {
   static async pushByChannel(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const { title, content, type = 'text', extraData } = req.body;
+      const { title, type = 'text', extraData } = req.body;
+      const content = req.body.content == null ? '' : req.body.content;
       const url = req.body.url || '';
+      const misoundOverrides = PushController._extractMisoundOverrides(req.body);
 
       const result = await PushService.pushByChannel(
         channelId,
         req.user.userId,
-        { title, content, type, url, extraData },
+        { title, content, type, url, extraData, ...misoundOverrides },
         getRealIP(req),
         req.requestId
       );
