@@ -150,6 +150,23 @@ test('pushToChannel：extraData 命名空间解析 channelType', async () => {
   assert.strictEqual(ch.config._adapter.calls[0].channelType, 'news');
 });
 
+test('pushToChannel：MiSound 命名空间和旧版字段完整传给适配器', async () => {
+  const adapter = makeAdapter();
+  const ch = { id: 8, name: '音箱', channel_type: 'misound', config: { _adapter: adapter }, is_active: true };
+  await PushService.pushToChannel(1, null, ch, {
+    content: '',
+    audioUrl: 'https://legacy.example/a.mp3',
+    extraData: { misound: { audioUrl: 'https://cdn.example/a.mp3', volume: 25, playCount: 2 } },
+  }, '1.2.3.4');
+
+  assert.strictEqual(adapter.calls[0].audioUrl, 'https://legacy.example/a.mp3');
+  assert.deepStrictEqual(adapter.calls[0].extraData, {
+    audioUrl: 'https://cdn.example/a.mp3',
+    volume: 25,
+    playCount: 2,
+  });
+});
+
 test('pushToChannel：发送失败记录 failed 并返回 error', async () => {
   const ch = { id: 3, name: 'W', channel_type: 'webhook', config: { _adapter: makeAdapter({ failWith: 'boom' }) }, is_active: true };
   const res = await PushService.pushToChannel(1, 10, ch, { content: 'C' }, '1.2.3.4');
@@ -212,6 +229,32 @@ test('pushToChannels：部分失败汇总', async () => {
   assert.strictEqual(res.successCount, 2);
   assert.strictEqual(res.failedCount, 1);
   assert.strictEqual(res.success, false);
+});
+
+test('pushToChannels：纯 MiSound 且提供 audioUrl 时允许空 content', async () => {
+  const channel = {
+    id: 9,
+    name: '音箱',
+    channel_type: 'misound',
+    config: { _adapter: makeAdapter() },
+    is_active: true,
+  };
+  const res = await PushService.pushToChannels(1, null, [channel], {
+    content: '',
+    extraData: { misound: { audioUrl: 'https://cdn.example/a.mp3' } },
+  });
+  assert.strictEqual(res.success, true);
+});
+
+test('pushToChannels：空 content 不能发送到普通或混合渠道', async () => {
+  const misound = { id: 9, channel_type: 'misound', config: { _adapter: makeAdapter() }, is_active: true };
+  await assert.rejects(
+    () => PushService.pushToChannels(1, null, [misound, makeWebhookChannel(10)], {
+      content: '',
+      extraData: { misound: { audioUrl: 'https://cdn.example/a.mp3' } },
+    }),
+    /消息内容不能为空/
+  );
 });
 
 // ---------- 经 token/endpoint 入口 ----------

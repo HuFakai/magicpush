@@ -2,6 +2,9 @@ const axios = require('axios');
 const FormData = require('form-data');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl } = require('../../utils/safeUrl');
+
+const MAX_REMOTE_MEDIA_BYTES = 20 * 1024 * 1024;
 
 /**
  * 企业微信应用消息渠道适配器
@@ -194,11 +197,20 @@ class WecomappChannel extends BaseChannel {
     }
     if (!fileBuffer && fileUrl) {
       logger.info(`企业微信应用正在下载资源: ${fileUrl}`);
-      const downloadConfig = { responseType: 'arraybuffer', timeout: 30000 };
+      const safeTarget = await resolveSafeHttpUrl(fileUrl);
+      const downloadConfig = {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        maxRedirects: 0,
+        maxContentLength: MAX_REMOTE_MEDIA_BYTES,
+        lookup: safeTarget.lookup,
+      };
       const proxyAgent = this.createProxyAgent(this.proxyUrl);
       if (proxyAgent) {
         downloadConfig.httpsAgent = proxyAgent;
         downloadConfig.httpAgent = proxyAgent;
+        // 代理负责连接目标；保留 DNS 预检，但避免 lookup 被用于解析代理主机。
+        delete downloadConfig.lookup;
       }
       const res = await axios.get(fileUrl, downloadConfig);
       fileBuffer = Buffer.from(res.data);

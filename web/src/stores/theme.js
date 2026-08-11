@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watchEffect, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watchEffect, onScopeDispose } from 'vue'
 
 export const useThemeStore = defineStore('theme', () => {
   // 主题模式: 'auto' | 'light' | 'dark'
@@ -66,14 +66,8 @@ export const useThemeStore = defineStore('theme', () => {
     localStorage.setItem('themeMode', themeMode.value)
   })
 
-  // 生命周期
-  onMounted(() => {
-    initSystemThemeListener()
-  })
-
-  onUnmounted(() => {
-    cleanupSystemThemeListener()
-  })
+  initSystemThemeListener()
+  onScopeDispose(cleanupSystemThemeListener)
 
   return {
     isDark,

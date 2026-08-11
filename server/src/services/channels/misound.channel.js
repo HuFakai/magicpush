@@ -13,6 +13,18 @@ const DEFAULT_END_VOLUME_DELAY_MS = 1500;
 const TTS_CHARS_PER_SECOND = 5;
 /** 估算时长上限（毫秒），避免极端长文本导致长时间阻塞 */
 const ESTIMATED_DURATION_LIMIT_MS = 60 * 1000;
+/** 单次同步任务允许的计划等待总量，避免长时间占用请求和全局音箱队列 */
+const MAX_SCHEDULED_WAIT_MS = 60 * 1000;
+
+// xiaoii speaker 使用模块级账号状态，只能把完整任务作为一个全局临界区执行。
+let misoundTaskQueue = Promise.resolve();
+let activeAccountId = null;
+
+function runMisoundTaskExclusive(task) {
+  const work = misoundTaskQueue.then(task, task);
+  misoundTaskQueue = work.catch(() => {});
+  return work;
+}
 
 /**
  * 延迟加载 xiaoii speaker 模块（ESM 动态 import 兼容）
@@ -115,7 +127,12 @@ function normalizeAudioUrlValue(value) {
     return { ok: true, value: '' };
   }
   const audioUrl = String(value).trim();
-  if (!/^https?:\/\//i.test(audioUrl)) {
+  try {
+    const parsed = new URL(audioUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error('invalid');
+    }
+  } catch {
     return { ok: false, message: '在线音频地址必须以 http:// 或 https:// 开头' };
   }
   return { ok: true, value: audioUrl };
@@ -182,8 +199,8 @@ class MisoundChannel extends BaseChannel {
   /**
    * 确保 speaker 已初始化（懒初始化，首次发送时执行）
    */
-  async _ensureInitialized() {
-    if (this._initialized) return;
+  async _ensureInitialized(force = false) {
+    if (this._initialized && !force) return;
     const speaker = getSpeaker();
     await speaker.init(this._buildSpeakerConfig());
     this._initialized = true;
@@ -347,22 +364,36 @@ class MisoundChannel extends BaseChannel {
    * 核心发送逻辑（不含认证重试）
    * @param {Object} message
    */
-  async _sendInternal(message) {
+  async _sendInternal(message, executionState = { sideEffectsStarted: false }) {
     // 提取推送 body 中的覆盖字段（仅 misound 识别，优先于渠道配置）
+    const namespacedOverrides = message.extraData && typeof message.extraData === 'object'
+      ? message.extraData
+      : {};
     const messageOverrides = {
-      volume: message.volume,
-      audioUrl: message.audioUrl,
-      playCount: message.playCount,
-      playInterval: message.playInterval,
+      volume: namespacedOverrides.volume ?? message.volume,
+      audioUrl: namespacedOverrides.audioUrl ?? message.audioUrl,
+      playCount: namespacedOverrides.playCount ?? message.playCount,
+      playInterval: namespacedOverrides.playInterval ?? message.playInterval,
     };
     const playbackOptions = this._resolvePlaybackOptions(messageOverrides);
     const ttsText = this._buildTtsText(message);
     const playMode = playbackOptions.audioUrl ? 'audio' : 'tts';
 
-    await this._ensureInitialized();
+    const intervalWaitMs = playbackOptions.playIntervalSeconds * 1000 *
+      Math.max(0, playbackOptions.playCount - 1);
+    const endVolumeWaitMs = playbackOptions.endVolume !== null
+      ? this._estimatePlayDurationMs(playbackOptions, ttsText)
+      : 0;
+    if (intervalWaitMs + endVolumeWaitMs > MAX_SCHEDULED_WAIT_MS) {
+      throw new Error('播放计划等待时间不能超过 60 秒，请减少播放次数、间隔或结束音量延迟');
+    }
+
+    // 每个完整任务都重新声明账号配置，避免复用过期的全局 speaker 上下文。
+    await this._ensureInitialized(true);
     const speaker = getSpeaker();
 
     if (playbackOptions.startVolume !== null) {
+      executionState.sideEffectsStarted = true;
       await this._setVolumeSafe(speaker, playbackOptions.startVolume, '开始');
     }
 
@@ -370,6 +401,7 @@ class MisoundChannel extends BaseChannel {
     const intervalMilliseconds = playbackOptions.playIntervalSeconds * 1000;
 
     for (let playIndex = 0; playIndex < playbackOptions.playCount; playIndex += 1) {
+      executionState.sideEffectsStarted = true;
       const singleResult = await this._playOnce(speaker, {
         audioUrl: playbackOptions.audioUrl,
         text: ttsText,
@@ -385,7 +417,7 @@ class MisoundChannel extends BaseChannel {
 
     if (playbackOptions.endVolume !== null) {
       // 估算播放时长后等待，尽量在播完后再设结束音量
-      const waitMs = this._estimatePlayDurationMs(playbackOptions, ttsText);
+      const waitMs = endVolumeWaitMs;
       if (waitMs > 0) {
         logger.info(`Misound 结束音量前等待 ${waitMs}ms（估算播放时长）`);
         await sleep(waitMs);
@@ -408,24 +440,33 @@ class MisoundChannel extends BaseChannel {
    * 发送推送：支持音量编排、多次播放、在线音频优先
    */
   async send(message) {
-    try {
-      return await this._sendInternal(message);
-    } catch (error) {
-      // 初始化可能过期，重置后重试一次
-      const errorMessage = error && error.message ? String(error.message) : '';
-      const looksLikeAuthError =
-        errorMessage.includes('认证') ||
-        errorMessage.includes('token') ||
-        errorMessage.includes('登录') ||
-        errorMessage.includes('Token');
-
-      if (looksLikeAuthError) {
-        logger.warn('Misound 认证可能过期，重新初始化后重试');
-        this._initialized = false;
-        return await this._sendInternal(message);
+    return runMisoundTaskExclusive(async () => {
+      const accountId = String(this.userId || '').trim();
+      if (activeAccountId && activeAccountId !== accountId) {
+        // 数据层仍限制单实例只保留一个账号；重新绑定到新账号时允许安全切换全局 speaker 上下文。
+        logger.info(`Misound 切换小米账号上下文: ${activeAccountId} -> ${accountId}`);
       }
-      throw error;
-    }
+      activeAccountId = accountId;
+
+      const executionState = { sideEffectsStarted: false };
+      try {
+        return await this._sendInternal(message, executionState);
+      } catch (error) {
+        const errorMessage = error && error.message ? String(error.message) : '';
+        const looksLikeAuthError =
+          errorMessage.includes('认证') ||
+          errorMessage.includes('token') ||
+          errorMessage.includes('登录') ||
+          errorMessage.includes('Token');
+
+        if (looksLikeAuthError && !executionState.sideEffectsStarted) {
+          logger.warn('Misound 初始化认证可能过期，重新初始化后重试');
+          this._initialized = false;
+          return await this._sendInternal(message, { sideEffectsStarted: false });
+        }
+        throw error;
+      }
+    });
   }
 
   _stripMarkdown(markdown) {

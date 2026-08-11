@@ -4,26 +4,18 @@
   <span>
     <a href="https://www.160621.xyz/magicpush" target="_blank">官方网站</a> |
     <a href="https://www.160621.xyz/magicpush/guide/dev/overview.html" target="_blank">开发文档</a> |
-    <a href="https://github.com/magiccode1412/magicpush" target="_blank">项目地址</a> |
+    <a href="https://github.com/HuFakai/magicpush" target="_blank">项目地址</a> |
     <a href="docs/CHANGELOG.md">更新日志</a>
   </span>
   <p>一个支持多种消息渠道的推送服务管理平台，用户可以通过标准化的REST API接口将消息推送到多种通知渠道。</p>
   <p>
     <a href="./LICENSE">
       <img alt="MIT License"
-        src="https://img.shields.io/github/license/magiccode1412/magicpush">
+        src="https://img.shields.io/github/license/HuFakai/magicpush">
     </a>
     <a href="https://www.160621.xyz/magicpush-dev/guide/changelog.html" target="_blank">
       <img alt="Latest Version"
-        src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmagiccode1412%2Fmagicpush%2Frefs%2Fheads%2Fmain%2Fversion.json&query=%24.version&prefix=v&style=flat&label=version&labelColor=orange">
-    </a>
-    <a href="https://hub.docker.com/r/magiccode1412/magicpush" target="_blank">
-      <img alt="Docker Pulls"
-        src="https://img.shields.io/docker/pulls/magiccode1412/magicpush?labelColor=%20%23528bff&color=%20%23155EEF">
-    </a>
-    <a href="https://hub.docker.com/r/magiccode1412/magicpush" target="_blank">
-      <img alt="Docker Image Size"
-        src="https://img.shields.io/docker/image-size/magiccode1412/magicpush">
+        src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FHuFakai%2Fmagicpush%2Frefs%2Fheads%2Fmain%2Fversion.json&query=%24.version&prefix=v&style=flat&label=version&labelColor=orange">
     </a>
   </p>
 </div>
@@ -144,7 +136,53 @@
 - **推送接口双重限流**：同时按来源 IP 和推送 Token 限流，防止 Token 泄露后被滥用
 - 限流触发时自动记录日志，方便排查异常请求
 
-> **注意：** 预构建的 Docker 镜像（`magiccode1412/magicpush:latest`）为 All-in-One 模式（Express 直接提供静态文件），不包含 Nginx，因此仅具备 Express 层的两层限流。如需启用 Nginx 层的兜底限流，请使用 `docker-compose up -d` 自行构建前后端分离镜像。
+本仓库使用 Docker Compose 从源码构建前后端分离服务，包含 Nginx 层的兜底限流。
+
+## 🐳 Docker Compose 部署与更新
+
+服务器需要预先安装 Git、Docker 和 Docker Compose。仓库未提供预构建镜像，以下命令会直接从源码构建前后端服务。
+
+### 首次部署
+
+```bash
+git clone https://github.com/HuFakai/magicpush.git
+cd magicpush
+
+docker compose up -d
+docker compose ps
+```
+
+首次启动需要下载基础镜像并构建项目。容器启动成功后，访问 `http://<服务器IP>` 进入管理后台。
+
+查看运行日志：
+
+```bash
+docker compose logs --tail=100
+docker compose logs -f
+```
+
+按 `Ctrl+C` 只会退出日志查看，不会停止服务。
+
+### 更新
+
+进入项目目录，拉取 Fork 仓库的最新代码并重新构建容器：
+
+```bash
+cd magicpush
+git pull --ff-only
+docker compose up -d --build
+
+docker compose ps
+docker compose logs --tail=100
+```
+
+数据库和日志保存在 Docker 的 `server-data`、`server-logs` 数据卷中，更新容器不会清空已有数据。更新前仍建议备份数据，并且不要执行 `docker compose down -v`，因为 `-v` 会删除数据卷。
+
+如果通过 HTTPS 域名或多层反向代理访问，请在项目目录创建 `.env` 并填写外部地址，以便小爱音箱上传音频后生成正确的在线 URL：
+
+```env
+PUBLIC_BASE_URL=https://push.example.com
+```
 
 ## 🛠️ 技术栈
 

@@ -1,5 +1,6 @@
 const yuanbaobotMonitor = require('../services/yuanbaobot/yuanbaobot-monitor');
 const { ChannelModel } = require('../models');
+const ChannelService = require('../services/channel.service');
 const ResponseUtil = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -20,11 +21,7 @@ class YuabaobotController {
   static async getBindStatus(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const channel = ChannelModel.findById(channelId);
-
-      if (!channel) {
-        return ResponseUtil.notFound(res, '渠道不存在');
-      }
+      const channel = await ChannelService.getChannel(channelId, req.user.userId);
       if (channel.channel_type !== 'yuanbaobot') {
         return ResponseUtil.badRequest(res, '该渠道不是元宝 Bot 类型');
       }
@@ -51,6 +48,7 @@ class YuabaobotController {
         connectionState,
       }, bound ? '已绑定' : '等待握手绑定');
     } catch (error) {
+      if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
       logger.error('查询元宝绑定状态失败:', error.message);
       return ResponseUtil.serverError(res, error.message);
     }
@@ -63,11 +61,7 @@ class YuabaobotController {
   static async retryBind(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const channel = ChannelModel.findById(channelId);
-
-      if (!channel) {
-        return ResponseUtil.notFound(res, '渠道不存在');
-      }
+      const channel = await ChannelService.getChannel(channelId, req.user.userId);
       if (channel.channel_type !== 'yuanbaobot') {
         return ResponseUtil.badRequest(res, '该渠道不是元宝 Bot 类型');
       }
@@ -90,6 +84,7 @@ class YuabaobotController {
         message: '已触发重连，请在元宝 App 中给 Bot 发送一条消息完成绑定',
       });
     } catch (error) {
+      if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
       logger.error('重试元宝绑定失败:', error.message);
       return ResponseUtil.serverError(res, error.message);
     }

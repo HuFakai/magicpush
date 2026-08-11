@@ -1,6 +1,6 @@
 # 阶段1: 基础镜像 - 安装pnpm
 FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 
 # 阶段2: 安装后端依赖
 FROM base AS server-deps

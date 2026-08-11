@@ -14,6 +14,32 @@ const PUSH_CONCURRENCY = 5;
  */
 class PushService {
   /**
+   * 空 content 只允许发送到纯 MiSound 目标，且必须提供合法的在线音频 URL。
+   */
+  static _assertMessageSupportedByChannels(message, channels) {
+    const content = message.content == null ? '' : String(message.content);
+    if (content.trim()) return;
+
+    const misoundData = message.extraData?.misound;
+    const audioUrl = misoundData?.audioUrl ?? message.audioUrl;
+    const onlyMisound = channels.length > 0 && channels.every(channel => channel.channel_type === 'misound');
+
+    let validAudioUrl = false;
+    if (audioUrl) {
+      try {
+        const parsed = new URL(String(audioUrl));
+        validAudioUrl = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        validAudioUrl = false;
+      }
+    }
+
+    if (!onlyMisound || !validAudioUrl) {
+      throw new Error('消息内容不能为空；仅全部目标渠道为小爱音箱时可只传有效的 audioUrl');
+    }
+  }
+
+  /**
    * 通过接口令牌推送
    */
   static async pushByToken(token, message, clientIp, requestId) {
@@ -71,13 +97,14 @@ class PushService {
       Object.assign(message, replaced);
     }
 
-    await EndpointModel.updateLastUsed(endpoint.id);
-
     // 获取接口关联的渠道
     const channels = await EndpointModel.getChannels(endpoint.id);
     if (!channels || channels.length === 0) {
       throw new Error('该接口未绑定任何渠道');
     }
+
+    this._assertMessageSupportedByChannels(message, channels);
+    await EndpointModel.updateLastUsed(endpoint.id);
 
     return channels;
   }
@@ -102,7 +129,7 @@ class PushService {
    * 推送到多个渠道
    */
   static async pushToChannels(userId, endpointId, channels, message, clientIp, requestId) {
-    const { title, content, type = 'text', url, extraData } = message;
+    this._assertMessageSupportedByChannels(message, channels);
 
     // 预取接口信息一次，供各渠道的免打扰判断与日志名称复用，避免逐渠道重复查询
     let endpoint;
@@ -116,7 +143,7 @@ class PushService {
 
     // 并发推送（受限并发度），结果顺序与 channels 一致
     const results = await mapWithConcurrency(channels, PUSH_CONCURRENCY, (channel) =>
-      this.pushToChannel(userId, endpointId, channel, { title, content, type, url, extraData }, clientIp, endpoint, requestId)
+      this.pushToChannel(userId, endpointId, channel, message, clientIp, endpoint, requestId)
     );
 
     const successCount = results.filter(r => r.success).length;
@@ -210,7 +237,15 @@ class PushService {
     try {
       // 获取适配器并发送（传递完整消息对象以支持渠道特有类型）
       const adapter = getChannelAdapter(channel.channel_type, channel.config, channel.id);
-      const result = await adapter.send({ title, content, type, url, channelType: resolvedChannelType, extraData: resolvedExtraData });
+      const result = await adapter.send({
+        ...message,
+        title,
+        content,
+        type,
+        url,
+        channelType: resolvedChannelType,
+        extraData: resolvedExtraData,
+      });
 
       // 更新记录为成功
       await PushLogModel.updateStatus(log.id, 'success', result, null);

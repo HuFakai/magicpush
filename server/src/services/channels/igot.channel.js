@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * iGot 渠道适配器
@@ -29,6 +30,7 @@ class IGotChannel extends BaseChannel {
   }
 
   async send(message) {
+    const safeTarget = await resolveSafeHttpUrl(this.serverUrl);
     const { title, content, type = 'text' } = message;
 
     let body;
@@ -61,6 +63,9 @@ class IGotChannel extends BaseChannel {
           'Content-Type': 'application/json',
         },
         timeout: 15000,
+        maxRedirects: 0,
+        maxContentLength: 1024 * 1024,
+        lookup: safeTarget.lookup,
       }
     );
 
@@ -78,9 +83,9 @@ class IGotChannel extends BaseChannel {
   validate(config) {
     if (config.serverUrl && config.serverUrl.trim() !== '') {
       try {
-        new URL(config.serverUrl);
-      } catch {
-        return { valid: false, message: '服务器地址格式不正确' };
+        parseHttpUrl(config.serverUrl);
+      } catch (error) {
+        return { valid: false, message: error.message };
       }
     }
     if (!config.key || config.key.trim() === '') {

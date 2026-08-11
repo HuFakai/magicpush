@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * Gotify 渠道适配器
@@ -31,6 +32,7 @@ class GotifyChannel extends BaseChannel {
   }
 
   async send(message) {
+    const safeTarget = await resolveSafeHttpUrl(this.serverUrl);
     const { title, content, type = 'text', url } = message;
     let text = content;
 
@@ -65,6 +67,9 @@ class GotifyChannel extends BaseChannel {
           'X-Gotify-Key': this.appToken,
         },
         timeout: 15000,
+        maxRedirects: 0,
+        maxContentLength: 1024 * 1024,
+        lookup: safeTarget.lookup,
       }
     );
 
@@ -78,9 +83,9 @@ class GotifyChannel extends BaseChannel {
       return { valid: false, message: '服务器地址不能为空' };
     }
     try {
-      new URL(config.serverUrl);
-    } catch {
-      return { valid: false, message: '服务器地址格式不正确' };
+      parseHttpUrl(config.serverUrl);
+    } catch (error) {
+      return { valid: false, message: error.message };
     }
     if (!config.appToken || config.appToken.trim() === '') {
       return { valid: false, message: 'Application Token 不能为空' };

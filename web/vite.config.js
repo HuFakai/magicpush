@@ -32,6 +32,17 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       // 复制 version.json 到 dist 目录
       copyPublicDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('@element-plus/icons-vue') || id.includes('lucide-vue-next')) return 'icons'
+            if (id.includes('element-plus')) return 'element-plus'
+            if (id.includes('/vue/') || id.includes('vue-router') || id.includes('pinia')) return 'vue-vendor'
+            return 'vendor'
+          },
+        },
+      },
     },
   }
 })

@@ -954,12 +954,8 @@ const filteredEndpoints = computed(() => {
 })
 
 const generateRandomToken = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let token = ''
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  form.token = token
+  const randomBytes = crypto.getRandomValues(new Uint8Array(16))
+  form.token = Array.from(randomBytes, (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 const validateTokenInput = async () => {
@@ -968,10 +964,10 @@ const validateTokenInput = async () => {
     return
   }
 
-  if (form.token.length < 6) {
+  if (form.token.length < 24) {
     tokenValidation.status = true
     tokenValidation.valid = false
-    tokenValidation.message = '令牌长度至少为6个字符'
+    tokenValidation.message = '令牌长度至少为24个字符'
     return
   }
 
@@ -1127,8 +1123,8 @@ const handleSubmit = async () => {
       ElMessage.error('请输入令牌')
       return
     }
-    if (form.token.length < 6) {
-      ElMessage.error('令牌长度至少为6个字符')
+    if (form.token.length < 24) {
+      ElMessage.error('令牌长度至少为24个字符')
       return
     }
     if (tokenValidation.status && !tokenValidation.valid) {

@@ -7,7 +7,7 @@ WORKDIR /app
 ARG VITE_API_BASE_URL
 
 # 安装pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

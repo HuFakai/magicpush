@@ -26,6 +26,7 @@ require.cache[modelsPath] = {
     },
     ChannelModel: (_channelModel = {
       findByUserId: async (userId) => [...fakeChannels.values()].filter((c) => c.user_id === userId),
+      findByType: async channelType => [...fakeChannels.values()].filter((c) => c.channel_type === channelType),
       findById: async (id) => fakeChannels.get(Number(id)) || null,
       create: async (data) => {
         const created = { id: 100, ...data };
@@ -123,6 +124,38 @@ test('createChannel：成功并写入默认 is_active', async () => {
   assert.strictEqual(ch.id, 100);
   assert.strictEqual(ch.is_active, true);
   assert.strictEqual(ch.user_id, 1);
+});
+
+test('createChannel：同一进程拒绝第二个小米账号', async () => {
+  fakeChannels.set(1, {
+    id: 1,
+    user_id: 1,
+    channel_type: 'misound',
+    config: { userId: '111', passToken: 't', did: '客厅' },
+  });
+  await assert.rejects(
+    () => ChannelService.createChannel(2, {
+      channelType: 'misound',
+      name: '另一个账号',
+      config: { userId: '222', passToken: 't2', did: '卧室' },
+    }),
+    /仅支持一个小米账号/
+  );
+});
+
+test('createChannel：同一小米账号可创建多个音箱渠道', async () => {
+  fakeChannels.set(1, {
+    id: 1,
+    user_id: 1,
+    channel_type: 'misound',
+    config: { userId: '111', passToken: 't', did: '客厅' },
+  });
+  const channel = await ChannelService.createChannel(2, {
+    channelType: 'misound',
+    name: '卧室音箱',
+    config: { userId: '111', passToken: 't', did: '卧室' },
+  });
+  assert.strictEqual(channel.channel_type, 'misound');
 });
 
 test('createChannel：yuanbaobot 类型触发 WS 连接', async () => {

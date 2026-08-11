@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, register, refreshToken as refreshTokenApi } from '@/api/auth'
+import { login, register, refreshToken as refreshTokenApi, logout as logoutApi } from '@/api/auth'
 import { resetRefreshState } from '@/utils/request'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -52,8 +52,16 @@ export const useAuthStore = defineStore('auth', () => {
     return res
   }
 
-  const logout = () => {
+  const logout = async () => {
+    const tokenToRevoke = refreshToken.value
     clearAuthData()
+    if (!tokenToRevoke) return
+    try {
+      await logoutApi(tokenToRevoke)
+    } catch (error) {
+      // 本地会话必须立即清理；服务端撤销失败不应阻止用户退出。
+      console.warn('服务端令牌撤销失败:', error)
+    }
   }
 
   const refreshAccessToken = async () => {

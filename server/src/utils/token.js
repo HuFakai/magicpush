@@ -7,6 +7,11 @@ const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 // 延迟加载，避免循环依赖
 let _jwtSecret = null;
+const INSECURE_PLACEHOLDER_SECRETS = new Set([
+  'your-super-secret-jwt-key-change-this-in-production',
+  'change-me',
+  'secret',
+]);
 
 /**
  * 获取 JWT 密钥
@@ -15,7 +20,11 @@ let _jwtSecret = null;
 function getJwtSecret() {
   // 优先使用环境变量
   if (process.env.JWT_SECRET) {
-    return process.env.JWT_SECRET;
+    const configuredSecret = process.env.JWT_SECRET.trim();
+    if (INSECURE_PLACEHOLDER_SECRETS.has(configuredSecret.toLowerCase())) {
+      throw new Error('JWT_SECRET 仍是公开占位值，请删除该配置以自动生成，或设置安全随机密钥');
+    }
+    return configuredSecret;
   }
 
   // 返回缓存的密钥

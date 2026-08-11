@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * PushMe 渠道适配器
@@ -57,6 +58,7 @@ class PushMeChannel extends BaseChannel {
     logger.info(`PushMe 发送消息: url=${url}, type=${type}, useTempKey=${!!(this.tempKey && !this.pushKey)}`);
     let response;
     try {
+      const safeTarget = await resolveSafeHttpUrl(url);
       response = await axios.post(
         url,
         body,
@@ -65,6 +67,9 @@ class PushMeChannel extends BaseChannel {
             'Content-Type': 'application/json',
           },
           timeout: 15000,
+          maxRedirects: 0,
+          maxContentLength: 1024 * 1024,
+          lookup: safeTarget.lookup,
         }
       );
     } catch (error) {
@@ -86,9 +91,9 @@ class PushMeChannel extends BaseChannel {
   validate(config) {
     if (config.serverUrl && config.serverUrl.trim() !== '') {
       try {
-        new URL(config.serverUrl);
-      } catch {
-        return { valid: false, message: '服务器地址格式不正确' };
+        parseHttpUrl(config.serverUrl);
+      } catch (error) {
+        return { valid: false, message: error.message };
       }
     }
     const hasPushKey = config.pushKey && config.pushKey.trim() !== '';

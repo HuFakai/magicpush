@@ -1,17 +1,17 @@
 # 阶段1: 构建依赖
 FROM node:20-alpine AS deps
-WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@latest --activate
-COPY package.json pnpm-lock.yaml ./
+WORKDIR /app/server
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
+COPY server/package.json server/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 # 阶段2: 运行镜像
 FROM node:20-alpine AS final
 WORKDIR /app/server
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
-COPY src/ ./src/
-COPY ../version.json ../
+COPY --from=deps /app/server/node_modules ./node_modules
+COPY server/package.json ./
+COPY server/src/ ./src/
+COPY version.json ../
 RUN mkdir -p data logs
 
 EXPOSE 3000

@@ -1,7 +1,6 @@
 const IlinkClient = require('../services/clawbot/ilink-client');
 const ChannelService = require('../services/channel.service');
 const clawbotMonitor = require('../services/clawbot/clawbot-monitor');
-const { ChannelModel } = require('../models');
 const ResponseUtil = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -113,14 +112,12 @@ class ClawbotController {
   static async checkContextStatus(req, res) {
   try {
     const channelId = parseInt(req.params.channelId);
-    const channel = ChannelModel.findById(channelId);
-    if (!channel) {
-      return ResponseUtil.notFound(res, '渠道不存在');
-    }
+    const channel = await ChannelService.getChannel(channelId, req.user.userId);
 
     const ready = !!(channel.config && channel.config.contextToken);
     return ResponseUtil.success(res, { ready });
   } catch (error) {
+    if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
     return ResponseUtil.serverError(res, error.message);
   }
   }

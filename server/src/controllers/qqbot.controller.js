@@ -1,5 +1,6 @@
 const qqbotMonitor = require('../services/qqbot/qqbot-monitor');
 const { ChannelModel } = require('../models');
+const ChannelService = require('../services/channel.service');
 const ResponseUtil = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -20,11 +21,7 @@ class QqbotController {
   static async getBindStatus(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const channel = ChannelModel.findById(channelId);
-
-      if (!channel) {
-        return ResponseUtil.notFound(res, '渠道不存在');
-      }
+      const channel = await ChannelService.getChannel(channelId, req.user.userId);
       if (channel.channel_type !== 'qqbot') {
         return ResponseUtil.badRequest(res, '该渠道不是 QQBot 类型');
       }
@@ -58,6 +55,7 @@ class QqbotController {
           : null,
       }, bound ? '已绑定' : '等待在QQ中@机器人或发消息');
     } catch (error) {
+      if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
       logger.error('查询QQBot绑定状态失败:', error.message);
       return ResponseUtil.serverError(res, error.message);
     }
@@ -70,11 +68,7 @@ class QqbotController {
   static async retryBind(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const channel = ChannelModel.findById(channelId);
-
-      if (!channel) {
-        return ResponseUtil.notFound(res, '渠道不存在');
-      }
+      const channel = await ChannelService.getChannel(channelId, req.user.userId);
       if (channel.channel_type !== 'qqbot') {
         return ResponseUtil.badRequest(res, '该渠道不是 QQBot 类型');
       }
@@ -100,6 +94,7 @@ class QqbotController {
         message: '已触发重连，请在QQ中 @机器人 或给机器人发一条消息完成绑定',
       });
     } catch (error) {
+      if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
       logger.error('重试QQBot绑定失败:', error.message);
       return ResponseUtil.serverError(res, error.message);
     }
@@ -112,11 +107,7 @@ class QqbotController {
   static async startBinding(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const channel = ChannelModel.findById(channelId);
-
-      if (!channel) {
-        return ResponseUtil.notFound(res, '渠道不存在');
-      }
+      const channel = await ChannelService.getChannel(channelId, req.user.userId);
       if (channel.channel_type !== 'qqbot') {
         return ResponseUtil.badRequest(res, '该渠道不是 QQBot 类型');
       }
@@ -130,6 +121,7 @@ class QqbotController {
         message: '正在建立 WebSocket 连接，请等待...',
       });
     } catch (error) {
+      if (error.message === '渠道不存在') return ResponseUtil.notFound(res, error.message);
       logger.error('启动QQBot绑定失败:', error.message);
       return ResponseUtil.serverError(res, error.message);
     }

@@ -58,7 +58,7 @@ class InboundController {
         return ResponseUtil.badRequest(res, '请求数据不能为空');
       }
 
-      logger.info(`[Inbound] 收到入站请求: endpoint=${endpoint.name}, token=${token.substring(0, 8)}..., method=${req.method}`);
+      logger.info(`[Inbound] 收到入站请求: endpoint=${endpoint.name}, method=${req.method}`);
 
       // 处理入站数据，转换为标准消息格式
       const message = InboundService.processInbound(endpoint, payload);

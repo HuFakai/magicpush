@@ -22,7 +22,7 @@ class EndpointService {
     // 为每个接口添加绑定的渠道信息
     const endpointsWithChannels = await Promise.all(
       pagedEndpoints.map(async (endpoint) => {
-        const channels = await EndpointModel.getChannels(endpoint.id);
+        const channels = await EndpointModel.getChannels(endpoint.id, { includeConfig: false });
         return {
           ...endpoint,
           channels,
@@ -49,7 +49,7 @@ class EndpointService {
     if (!endpoint || endpoint.user_id !== userId) {
       throw new Error('接口不存在');
     }
-    const channels = await EndpointModel.getChannels(id);
+    const channels = await EndpointModel.getChannels(id, { includeConfig: false });
     return {
       ...endpoint,
       channels,
@@ -145,7 +145,7 @@ class EndpointService {
       throw new Error('接口不存在');
     }
 
-    return await EndpointModel.getChannels(id);
+    return await EndpointModel.getChannels(id, { includeConfig: false });
   }
 
   /**
@@ -157,8 +157,15 @@ class EndpointService {
       throw new Error('接口不存在');
     }
 
-    await EndpointModel.setChannels(id, channelIds);
-    return await EndpointModel.getChannels(id);
+    if (!Array.isArray(channelIds)) {
+      throw new Error('channelIds 必须是数组');
+    }
+    if (channelIds.some(channelId => !Number.isInteger(channelId) || channelId <= 0)) {
+      throw new Error('渠道 ID 必须是正整数');
+    }
+
+    await EndpointModel.setChannels(id, userId, channelIds);
+    return await EndpointModel.getChannels(id, { includeConfig: false });
   }
 
   /**

@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * ntfy 渠道适配器
@@ -81,6 +82,7 @@ class NtfyChannel extends BaseChannel {
   }
 
   async send(message) {
+    const safeTarget = await resolveSafeHttpUrl(this.serverUrl);
     const { title, content, type = 'text', url } = message;
     let text = content;
 
@@ -151,6 +153,9 @@ class NtfyChannel extends BaseChannel {
       {
         headers,
         timeout: 15000,
+        maxRedirects: 0,
+        maxContentLength: 1024 * 1024,
+        lookup: safeTarget.lookup,
       }
     );
 
@@ -162,9 +167,9 @@ class NtfyChannel extends BaseChannel {
   validate(config) {
     if (config.serverUrl && config.serverUrl.trim() !== '') {
       try {
-        new URL(config.serverUrl);
-      } catch {
-        return { valid: false, message: '服务器地址格式不正确' };
+        parseHttpUrl(config.serverUrl);
+      } catch (error) {
+        return { valid: false, message: error.message };
       }
     }
     if (!config.topic || config.topic.trim() === '') {

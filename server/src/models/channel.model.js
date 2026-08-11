@@ -41,6 +41,17 @@ class ChannelModel {
   }
 
   /**
+   * 根据渠道类型获取全部渠道（仅供需要进程级唯一资源的服务约束使用）。
+   */
+  static findByType(channelType) {
+    const stmt = db.prepare('SELECT * FROM channels WHERE channel_type = ? ORDER BY created_at ASC');
+    return stmt.all(channelType).map(channel => ({
+      ...channel,
+      config: JSON.parse(channel.config),
+    }));
+  }
+
+  /**
    * 创建渠道
    */
   static create(channelData) {

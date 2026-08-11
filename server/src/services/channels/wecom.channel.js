@@ -1,6 +1,9 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl } = require('../../utils/safeUrl');
+
+const MAX_REMOTE_MEDIA_BYTES = 20 * 1024 * 1024;
 
 /**
  * 企业微信机器人适配器
@@ -331,7 +334,14 @@ class WecomChannel extends BaseChannel {
       fileBuffer = Buffer.from(base64, 'base64');
     } else if (fileUrl) {
       logger.info(`企业微信机器人正在下载资源: ${fileUrl}`);
-      const res = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 30000 });
+      const safeTarget = await resolveSafeHttpUrl(fileUrl);
+      const res = await axios.get(fileUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        maxRedirects: 0,
+        maxContentLength: MAX_REMOTE_MEDIA_BYTES,
+        lookup: safeTarget.lookup,
+      });
       fileBuffer = Buffer.from(res.data);
       logger.info(`企业微信机器人资源下载完成: ${fileBuffer.length} bytes`);
     } else {
@@ -361,7 +371,14 @@ class WecomChannel extends BaseChannel {
    */
   async _downloadToBase64(fileUrl) {
     logger.info(`企业微信机器人正在下载资源: ${fileUrl}`);
-    const res = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 30000 });
+    const safeTarget = await resolveSafeHttpUrl(fileUrl);
+    const res = await axios.get(fileUrl, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      maxRedirects: 0,
+      maxContentLength: MAX_REMOTE_MEDIA_BYTES,
+      lookup: safeTarget.lookup,
+    });
     const buffer = Buffer.from(res.data);
     logger.info(`企业微信机器人资源下载完成: ${buffer.length} bytes`);
     return buffer.toString('base64');

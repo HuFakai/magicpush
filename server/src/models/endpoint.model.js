@@ -222,17 +222,19 @@ class EndpointModel {
   /**
    * 获取接口关联的渠道
    */
-  static getChannels(endpointId) {
+  static getChannels(endpointId, options = {}) {
+    const includeConfig = options.includeConfig !== false;
+    const fields = includeConfig
+      ? 'c.*'
+      : 'c.id, c.user_id, c.channel_type, c.name, c.is_active, c.created_at, c.updated_at';
     const stmt = db.prepare(`
-      SELECT c.* FROM channels c
+      SELECT ${fields} FROM channels c
       INNER JOIN endpoint_channels ec ON c.id = ec.channel_id
       WHERE ec.endpoint_id = ? AND c.is_active = 1
     `);
     const channels = stmt.all(endpointId);
-    return channels.map(channel => ({
-      ...channel,
-      config: JSON.parse(channel.config),
-    }));
+    if (!includeConfig) return channels;
+    return channels.map(channel => ({ ...channel, config: JSON.parse(channel.config) }));
   }
 
   /**
@@ -258,18 +260,33 @@ class EndpointModel {
   /**
    * 设置接口渠道（全量替换）
    */
-  static setChannels(endpointId, channelIds) {
-    const deleteStmt = db.prepare('DELETE FROM endpoint_channels WHERE endpoint_id = ?');
-    deleteStmt.run(endpointId);
+  static setChannels(endpointId, userId, channelIds) {
+    const uniqueChannelIds = [...new Set(channelIds)];
+    const replaceChannels = db.transaction(() => {
+      if (uniqueChannelIds.length > 0) {
+        const placeholders = uniqueChannelIds.map(() => '?').join(', ');
+        const ownedChannels = db.prepare(
+          `SELECT id FROM channels WHERE user_id = ? AND id IN (${placeholders})`
+        ).all(userId, ...uniqueChannelIds);
 
-    if (channelIds && channelIds.length > 0) {
-      const insertStmt = db.prepare(
-        'INSERT INTO endpoint_channels (endpoint_id, channel_id) VALUES (?, ?)'
-      );
-      for (const channelId of channelIds) {
-        insertStmt.run(endpointId, channelId);
+        if (ownedChannels.length !== uniqueChannelIds.length) {
+          throw new Error('渠道不存在或无权访问');
+        }
       }
-    }
+
+      db.prepare('DELETE FROM endpoint_channels WHERE endpoint_id = ?').run(endpointId);
+
+      if (uniqueChannelIds.length > 0) {
+        const insertStmt = db.prepare(
+          'INSERT INTO endpoint_channels (endpoint_id, channel_id) VALUES (?, ?)'
+        );
+        for (const channelId of uniqueChannelIds) {
+          insertStmt.run(endpointId, channelId);
+        }
+      }
+    });
+
+    replaceChannels();
   }
 
   /**

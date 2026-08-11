@@ -1,5 +1,6 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * ShowDoc 适配器
@@ -13,6 +14,7 @@ class ShowDocChannel extends BaseChannel {
   }
 
   async send(message) {
+    const safeTarget = await resolveSafeHttpUrl(this.url);
     const { title, content } = message;
     const response = await axios.post(
       this.url,
@@ -20,6 +22,9 @@ class ShowDocChannel extends BaseChannel {
       {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: 10000,
+        maxRedirects: 0,
+        maxContentLength: 1024 * 1024,
+        lookup: safeTarget.lookup,
         transformRequest: [(data) => {
           const params = new URLSearchParams();
           for (const key in data) {
@@ -43,9 +48,9 @@ class ShowDocChannel extends BaseChannel {
       return { valid: false, message: '推送URL不能为空' };
     }
     try {
-      new URL(config.url);
-    } catch {
-      return { valid: false, message: '推送URL格式不正确' };
+      parseHttpUrl(config.url);
+    } catch (error) {
+      return { valid: false, message: error.message };
     }
     return { valid: true, message: '' };
   }

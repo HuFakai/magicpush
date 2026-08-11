@@ -14,6 +14,21 @@ function getYuabaobotMonitor() {
  */
 class ChannelService {
   /**
+   * xiaoii 的 speaker 是进程级单例，当前只能安全承载一个小米账号。
+   */
+  static async assertMisoundAccountAllowed(userId, excludeChannelId = null) {
+    const accountId = String(userId || '').trim();
+    const existingChannels = await ChannelModel.findByType('misound');
+    const conflictingChannel = existingChannels.find(channel =>
+      channel.id !== excludeChannelId &&
+      String(channel.config?.userId || '').trim() !== accountId
+    );
+    if (conflictingChannel) {
+      throw new Error('当前服务实例仅支持一个小米账号；多账号需要独立部署实例');
+    }
+  }
+
+  /**
    * 获取渠道列表
    */
   static async getChannels(userId) {
@@ -48,6 +63,9 @@ class ChannelService {
     const validation = validateChannelConfig(channelType, config);
     if (!validation.valid) {
       throw new Error(validation.message);
+    }
+    if (channelType === 'misound') {
+      await this.assertMisoundAccountAllowed(config.userId);
     }
 
     const channel = await ChannelModel.create({
@@ -90,6 +108,9 @@ class ChannelService {
       const validation = validateChannelConfig(channel.channel_type, channelData.config);
       if (!validation.valid) {
         throw new Error(validation.message);
+      }
+      if (channel.channel_type === 'misound') {
+        await this.assertMisoundAccountAllowed(channelData.config.userId, channel.id);
       }
       updateData.config = channelData.config;
 

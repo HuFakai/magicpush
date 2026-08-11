@@ -21,7 +21,9 @@ const fs = require('fs');
 const http = require('http');
 
 const tmpDb = path.join(os.tmpdir(), `mp_integ_${process.pid}_${Date.now()}.db`);
+const tmpAudioDir = path.join(os.tmpdir(), `mp_audio_${process.pid}_${Date.now()}`);
 process.env.DB_PATH = tmpDb;
+process.env.MISOUND_AUDIO_DIR = tmpAudioDir;
 process.env.NODE_ENV = 'test'; // 非 development，避免初始化脚本自动创建 admin 并关闭注册
 process.env.JWT_SECRET = 'integration-test-secret'; // 固定密钥，令牌可确定性验证
 
@@ -51,13 +53,15 @@ require.cache[channelsPath] = {
 const express = require('express');
 const initDatabase = require('../../src/database/init');
 const db = require('../../src/config/database');
-const { ChannelModel, EndpointModel } = require('../../src/models');
+const { UserModel, ChannelModel, EndpointModel, RefreshTokenModel } = require('../../src/models');
 const AuthService = require('../../src/services/auth.service');
 const RateLimitConfigService = require('../../src/services/rateLimitConfig.service');
 
 const authRoutes = require('../../src/routes/auth.routes');
 const pushRoutes = require('../../src/routes/push.routes');
 const inboundRoutes = require('../../src/routes/inbound.routes');
+const misoundRoutes = require('../../src/routes/misound.routes');
+const mediaRoutes = require('../../src/routes/media.routes');
 const { globalLimiter } = require('../../src/middleware/rateLimit.middleware');
 const { errorMiddleware, notFoundMiddleware } = require('../../src/middleware/error.middleware');
 
@@ -70,6 +74,8 @@ app.use(globalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/inbound', inboundRoutes);
+app.use('/api/channels/misound', misoundRoutes);
+app.use('/api/media', mediaRoutes);
 app.use(notFoundMiddleware);
 app.use(errorMiddleware);
 
@@ -115,6 +121,32 @@ function api(method, pathname, { token, body, headers = {} } = {}) {
     );
     req.on('error', reject);
     if (data) req.write(data);
+    req.end();
+  });
+}
+
+function binaryApi(method, pathname, { token, body, headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
+    const requestHeaders = {
+      ...headers,
+      ...(data.length > 0 ? { 'Content-Length': data.length } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const req = http.request(
+      { hostname: '127.0.0.1', port, path: pathname, method, headers: requestHeaders },
+      res => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          body: Buffer.concat(chunks),
+        }));
+      }
+    );
+    req.on('error', reject);
+    if (data.length > 0) req.write(data);
     req.end();
   });
 }
@@ -186,6 +218,7 @@ after(async () => {
       fs.unlinkSync(f);
     } catch { /* ignore */ }
   }
+  await fs.promises.rm(tmpAudioDir, { recursive: true, force: true });
 });
 
 // ==================== 鉴权 ====================
@@ -196,6 +229,27 @@ test('鉴权：登录正确凭证返回令牌与用户信息', async () => {
   assert.strictEqual(res.body.success, true);
   assert.ok(res.body.data.accessToken, '应返回 accessToken');
   assert.strictEqual(res.body.data.user.role, 'admin');
+});
+
+test('鉴权：刷新令牌仅以摘要落库，并可轮换和登出撤销', async () => {
+  const stored = db.prepare('SELECT token FROM refresh_tokens WHERE user_id = ? ORDER BY id ASC LIMIT 1').get(userId);
+  assert.ok(stored);
+  assert.notStrictEqual(stored.token, admin.refreshToken);
+  assert.match(stored.token, /^[a-f0-9]{64}$/);
+  assert.ok(RefreshTokenModel.findByToken(admin.refreshToken));
+
+  const refreshed = await api('POST', '/api/auth/refresh', {
+    body: { refreshToken: admin.refreshToken },
+  });
+  assert.strictEqual(refreshed.status, 200);
+  assert.ok(refreshed.body.data.refreshToken);
+  assert.strictEqual(RefreshTokenModel.findByToken(admin.refreshToken), undefined);
+
+  const logout = await api('POST', '/api/auth/logout', {
+    body: { refreshToken: refreshed.body.data.refreshToken },
+  });
+  assert.strictEqual(logout.status, 200);
+  assert.strictEqual(RefreshTokenModel.findByToken(refreshed.body.data.refreshToken), undefined);
 });
 
 test('鉴权：登录密码错误 → 400', async () => {
@@ -232,6 +286,61 @@ test('鉴权：受保护路由无效令牌 → 401', async () => {
   });
   assert.strictEqual(res.status, 401);
   assert.strictEqual(res.body.message, '访问令牌无效或已过期');
+});
+
+test('多租户：拒绝把他人渠道绑定到自己的接口，并保持原绑定不变', () => {
+  const otherUser = UserModel.create({
+    username: 'other_user',
+    email: 'other@test.com',
+    password: 'unused-test-hash',
+    role: 'user',
+  });
+  const foreignChannel = ChannelModel.create({
+    user_id: otherUser.id,
+    channel_type: 'webhook',
+    name: 'Foreign',
+    config: { url: 'https://foreign.example/hook', secret: 'must-not-leak' },
+    is_active: true,
+  });
+
+  assert.throws(
+    () => EndpointModel.setChannels(endpointId, userId, [foreignChannel.id]),
+    /渠道不存在或无权访问/
+  );
+  const channels = EndpointModel.getChannels(endpointId, { includeConfig: false });
+  assert.deepStrictEqual(channels.map(item => item.id), [channelId]);
+  assert.strictEqual(Object.hasOwn(channels[0], 'config'), false);
+});
+
+// ==================== 小爱音箱音频上传 ====================
+
+test('小爱音箱：需登录后上传音频，并可通过生成地址公开读取', async () => {
+  const audio = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(32, 7)]);
+  const unauthorized = await binaryApi('POST', '/api/channels/misound/audio', {
+    body: audio,
+    headers: { 'Content-Type': 'audio/mpeg' },
+  });
+  assert.strictEqual(unauthorized.status, 401);
+
+  const uploaded = await binaryApi('POST', '/api/channels/misound/audio', {
+    token: admin.accessToken,
+    body: audio,
+    headers: { 'Content-Type': 'audio/mpeg', Host: `127.0.0.1:${port}` },
+  });
+  assert.strictEqual(uploaded.status, 201);
+  const payload = JSON.parse(uploaded.body.toString('utf8'));
+  assert.match(payload.data.url, new RegExp(`^http://127\\.0\\.0\\.1:${port}/api/media/misound/${userId}/`));
+
+  const publicPath = new URL(payload.data.url).pathname;
+  const downloaded = await binaryApi('GET', publicPath);
+  assert.strictEqual(downloaded.status, 200);
+  assert.strictEqual(downloaded.headers['content-type'], 'audio/mpeg');
+  assert.deepStrictEqual(downloaded.body, audio);
+
+  const partial = await binaryApi('GET', publicPath, { headers: { Range: 'bytes=0-2' } });
+  assert.strictEqual(partial.status, 206);
+  assert.strictEqual(partial.headers['content-range'], `bytes 0-2/${audio.length}`);
+  assert.deepStrictEqual(partial.body, Buffer.from('ID3'));
 });
 
 // ==================== 推送全链路 ====================

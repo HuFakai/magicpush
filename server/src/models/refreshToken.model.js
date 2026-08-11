@@ -1,4 +1,9 @@
 const db = require('../config/database');
+const crypto = require('crypto');
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
 
 /**
  * 刷新令牌模型
@@ -11,23 +16,23 @@ class RefreshTokenModel {
     const stmt = db.prepare(
       'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)'
     );
-    return stmt.run(userId, token, expiresAt);
+    return stmt.run(userId, hashToken(token), expiresAt);
   }
 
   /**
    * 根据令牌查找
    */
   static findByToken(token) {
-    const stmt = db.prepare('SELECT * FROM refresh_tokens WHERE token = ?');
-    return stmt.get(token);
+    const stmt = db.prepare('SELECT * FROM refresh_tokens WHERE token = ? OR token = ?');
+    return stmt.get(hashToken(token), token);
   }
 
   /**
    * 删除指定令牌
    */
   static deleteByToken(token) {
-    const stmt = db.prepare('DELETE FROM refresh_tokens WHERE token = ?');
-    return stmt.run(token);
+    const stmt = db.prepare('DELETE FROM refresh_tokens WHERE token = ? OR token = ?');
+    return stmt.run(hashToken(token), token);
   }
 
   /**

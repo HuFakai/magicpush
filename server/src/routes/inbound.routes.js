@@ -24,8 +24,7 @@ async function loadEndpoint(req, res, next) {
     // 回写，便于控制器后续逻辑（日志、推送）复用
     req.params.token = token;
 
-    // 调试日志
-    logger.info(`[Inbound] 收到请求: method=${req.method}, token=${token}`);
+    logger.info(`[Inbound] 收到请求: method=${req.method}`);
 
     if (!token) {
       return res.status(400).json({
@@ -78,17 +77,13 @@ async function loadEndpoint(req, res, next) {
   }
 }
 
+// 静态测试路由必须在 /:token 之前，避免把 "test" 误识别为 token。
+router.post('/test', inboundLimiter, loadEndpoint, inboundController.testInbound);
+router.post('/:token/test', inboundLimiter, loadEndpoint, inboundController.testInbound);
+
 // 入站接收接口（支持 GET 和 POST）
-// 方式1: Token 在 URL 路径中
 router.get('/:token', inboundLimiter, loadEndpoint, inboundController.handleInbound);
 router.post('/:token', inboundLimiter, loadEndpoint, inboundController.handleInbound);
-// 方式2: Token 在 Authorization 头中（更安全）
 router.post('/', inboundLimiter, loadEndpoint, inboundController.handleInbound);
-
-// 测试入站配置（需要认证，在认证路由中处理）
-// 方式1: Token 在 URL 路径中
-router.post('/:token/test', loadEndpoint, inboundController.testInbound);
-// 方式2: Token 在 Authorization 头中（更安全）
-router.post('/test', loadEndpoint, inboundController.testInbound);
 
 module.exports = router;

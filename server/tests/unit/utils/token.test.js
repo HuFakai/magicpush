@@ -45,6 +45,19 @@ test('verifyToken：非法令牌返回 null', () => {
   assert.strictEqual(TokenUtil.verifyToken('not-a-valid-token'), null);
 });
 
+test('generateTokens：拒绝公开的 JWT_SECRET 占位值', () => {
+  const previousSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = 'your-super-secret-jwt-key-change-this-in-production';
+  try {
+    assert.throws(
+      () => TokenUtil.generateTokens({ userId: 1 }),
+      /JWT_SECRET 仍是公开占位值/
+    );
+  } finally {
+    process.env.JWT_SECRET = previousSecret;
+  }
+});
+
 test('decodeToken：不验证即可解析载荷', () => {
   const tokens = TokenUtil.generateTokens({ userId: 1 });
   const payload = TokenUtil.decodeToken(tokens.accessToken);

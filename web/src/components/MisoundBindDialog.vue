@@ -186,13 +186,7 @@
         </el-form-item>
 
         <el-form-item label="在线音频 URL">
-          <el-input
-            v-model="audioUrl"
-            placeholder="https://example.com/alert.mp3"
-          />
-          <p class="text-xs text-gray-500 mt-1">
-            填写后优先播放该音频，不再播报推送文本；须为公网 http(s) 直链
-          </p>
+          <MisoundAudioUpload v-model="audioUrl" />
         </el-form-item>
 
         <el-form-item label="结束音量延迟（秒）">
@@ -260,7 +254,7 @@
           :loading="binding"
           @click="handleConfirm"
         >
-          确认绑定
+          {{ mode === 'rebind' ? '确认重新绑定' : '确认绑定' }}
         </el-button>
       </template>
       <template v-else-if="step === 'success'">
@@ -274,12 +268,13 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, SuccessFilled, WarningFilled, CircleCheck, ArrowLeft } from '@element-plus/icons-vue'
 import QrcodeVue from 'qrcode.vue'
 import { initMiQRLogin, pollMiQRStatus, confirmMiBind, rebindMiChannel } from '@/api/misound'
 import { getChannels } from '@/api/channel'
+import MisoundAudioUpload from '@/components/MisoundAudioUpload.vue'
 
 const props = defineProps({
   visible: Boolean,
@@ -318,6 +313,17 @@ const boundDeviceName = ref('')
 
 // 防止重复轮询
 let isPolling = false
+let startPollingTimer = null
+let pollTimer = null
+
+function schedulePoll(delay) {
+  if (!isPolling) return
+  clearTimeout(pollTimer)
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    doPoll()
+  }, delay)
+}
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -336,6 +342,12 @@ async function loadExistingAccounts() {
     if (res.success && res.data) {
       // 从已有的 misound 渠道中提取唯一的账号
       const channels = res.data.filter(ch => ch.channel_type === 'misound' && ch.config)
+      const targetChannel = props.mode === 'rebind'
+        ? channels.find(channel => channel.id === props.channelId)
+        : null
+      if (targetChannel) {
+        prefillChannelConfig(targetChannel)
+      }
       const accountMap = new Map()
       
       channels.forEach(channel => {
@@ -353,6 +365,11 @@ async function loadExistingAccounts() {
       })
       
       existingAccounts.value = Array.from(accountMap.values())
+      if (targetChannel) {
+        selectedAccount.value = existingAccounts.value.find(
+          account => account.userId === targetChannel.config.userId
+        ) || null
+      }
       
       // 如果有已有账号，显示选择界面；否则直接进入扫码
       if (existingAccounts.value.length > 0) {
@@ -368,6 +385,20 @@ async function loadExistingAccounts() {
     // 加载已有账号失败，直接进入扫码流程
     startQRLogin()
   }
+}
+
+function prefillChannelConfig(channel) {
+  const config = channel.config || {}
+  const optionalValue = value => value === undefined || value === null ? '' : String(value)
+  deviceName.value = optionalValue(config.did)
+  channelName.value = channel.name || '小爱音箱'
+  ttsMode.value = config.ttsMode || 'auto'
+  startVolume.value = optionalValue(config.startVolume)
+  endVolume.value = optionalValue(config.endVolume)
+  playCount.value = optionalValue(config.playCount) || '1'
+  playInterval.value = optionalValue(config.playInterval) || '0'
+  audioUrl.value = optionalValue(config.audioUrl)
+  endVolumeDelay.value = optionalValue(config.endVolumeDelay)
 }
 
 /**
@@ -410,7 +441,9 @@ async function fetchQRCode() {
       sessionId.value = res.data.sessionId
       step.value = 'qrcode'
 
-      setTimeout(() => {
+      clearTimeout(startPollingTimer)
+      startPollingTimer = setTimeout(() => {
+        startPollingTimer = null
         if (props.visible && step.value === 'qrcode') {
           startPolling()
         }
@@ -445,7 +478,7 @@ async function doPoll() {
     const res = await pollMiQRStatus(sessionId.value)
 
     if (!res.success || !res.data) {
-      setTimeout(doPoll, 3000)
+      schedulePoll(3000)
       return
     }
 
@@ -477,11 +510,11 @@ async function doPoll() {
         break
 
       default:
-        setTimeout(doPoll, 2000)
+        schedulePoll(2000)
         break
     }
   } catch {
-    setTimeout(doPoll, 5000)
+    schedulePoll(5000)
   }
 }
 
@@ -523,6 +556,7 @@ async function handleConfirm() {
         userId: credentials.value.userId,
         passToken: credentials.value.passToken,
         did,
+        name: channelName.value || '小爱音箱',
         ttsMode: ttsMode.value,
         ...buildPlaybackPayload(),
       })
@@ -569,6 +603,10 @@ function reset() {
 
 function cleanup() {
   isPolling = false
+  clearTimeout(startPollingTimer)
+  clearTimeout(pollTimer)
+  startPollingTimer = null
+  pollTimer = null
   step.value = 'idle'
   qrCodeUrl.value = ''
   loginUrl.value = ''
@@ -588,4 +626,6 @@ function cleanup() {
   boundDeviceName.value = ''
   errorMsg.value = ''
 }
+
+onUnmounted(cleanup)
 </script>

@@ -153,6 +153,7 @@
       v-model="showCreateDialog"
       :title="editingChannel ? '编辑渠道' : '绑定渠道'"
       width="500px"
+      @closed="resetForm"
     >
       <el-form
         ref="formRef"
@@ -234,21 +235,26 @@
           </p>
         </div>
 
-        <el-form-item v-if="form.channelType !== 'wechatclawbot' && form.channelType !== 'misound'" label="渠道名称" prop="name">
+        <el-form-item v-if="showStandardChannelForm" label="渠道名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入渠道名称" />
         </el-form-item>
 
         <!-- 动态配置字段 -->
-        <template v-if="currentChannelType && form.channelType !== 'wechatclawbot' && form.channelType !== 'misound'">
+        <template v-if="currentChannelType && showStandardChannelForm">
           <el-form-item
             v-for="field in visibleConfigFields"
             :key="field.name"
             :label="field.label"
             :required="field.required"
           >
+            <!-- 小爱音箱在线音频 -->
+            <MisoundAudioUpload
+              v-if="form.channelType === 'misound' && field.name === 'audioUrl'"
+              v-model="form.config[field.name]"
+            />
             <!-- 下拉选择 -->
             <el-select
-              v-if="field.type === 'select'"
+              v-else-if="field.type === 'select'"
               v-model="form.config[field.name]"
               :placeholder="field.placeholder"
               class="w-full"
@@ -327,7 +333,7 @@
         </template>
       </el-form>
 
-      <template v-if="form.channelType !== 'wechatclawbot' && form.channelType !== 'misound'" #footer>
+      <template v-if="showStandardChannelForm" #footer>
         <!-- 群晖 Chat 相关文档链接 -->
         <div v-if="form.channelType === 'synologychat'" class="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-xs">
           <a href="https://www.synology.com/en-global/dsm/feature/chat" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1">
@@ -445,6 +451,7 @@ import {
 import ClawbotBindDialog from '@/components/ClawbotBindDialog.vue'
 import YuanbaobotBindDialog from '@/components/YuanbaobotBindDialog.vue'
 import MisoundBindDialog from '@/components/MisoundBindDialog.vue'
+import MisoundAudioUpload from '@/components/MisoundAudioUpload.vue'
 import QqbotBindDialog from '@/components/QqbotBindDialog.vue'
 
 const channels = ref([])
@@ -479,6 +486,12 @@ const formRules = {
 
 const currentChannelType = computed(() => {
   return channelTypes.value.find(t => t.type === form.channelType)
+})
+
+// 微信龙虾机器人和小爱音箱首次绑定使用专用流程；编辑已有渠道时仍需显示配置表单。
+const showStandardChannelForm = computed(() => {
+  return Boolean(editingChannel.value)
+    || !['wechatclawbot', 'misound'].includes(form.channelType)
 })
 
 /**

@@ -11,9 +11,17 @@ const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
 const { handleValidationErrors } = require('../middleware/validator.middleware');
 const misoundController = require('../controllers/misound.controller');
+const { getMaxUploadBytes } = require('../services/misound-audio.service');
 
 // 所有小爱音箱路由都需要认证
 router.use(authMiddleware);
+
+// 上传音频文件。使用原始二进制请求体，避免 multipart 依赖和临时文件残留。
+const audioBodyParser = express.raw({
+  type: () => true,
+  limit: getMaxUploadBytes(),
+});
+router.post('/audio', audioBodyParser, misoundController.uploadAudio);
 
 // 初始化扫码登录（获取二维码）
 router.post('/qr/init', misoundController.initQRLogin);

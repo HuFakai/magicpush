@@ -25,6 +25,10 @@ const errorMiddleware = (err, req, res, _next) => {
     return ResponseUtil.unauthorized(res, '未授权访问');
   }
 
+  if (err.type === 'entity.too.large') {
+    return ResponseUtil.error(res, '上传文件过大', 413, 413);
+  }
+
   if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
     return ResponseUtil.badRequest(res, '数据已存在');
   }

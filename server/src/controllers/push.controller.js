@@ -11,11 +11,48 @@ class PushController {
    * 从请求源中提取小爱音箱可选覆盖字段（仅 misound 渠道识别，其他渠道忽略）
    */
   static _extractMisoundOverrides(source = {}) {
+    return Object.fromEntries(
+      ['volume', 'audioUrl', 'playCount', 'playInterval']
+        .filter(key => source[key] !== undefined)
+        .map(key => [key, source[key]])
+    );
+  }
+
+  /**
+   * 兼容旧版顶层 MiSound 参数，同时统一写入 extraData.misound。
+   */
+  static _buildMessage(source = {}) {
+    let extraData = source.extraData;
+    if (typeof extraData === 'string') {
+      try {
+        extraData = JSON.parse(extraData);
+      } catch {
+        throw new Error('extraData 必须是合法的 JSON 对象');
+      }
+    }
+    if (extraData == null) extraData = {};
+    if (typeof extraData !== 'object' || Array.isArray(extraData)) {
+      throw new Error('extraData 必须是对象');
+    }
+
+    const misoundOverrides = this._extractMisoundOverrides(source);
+    if (Object.keys(misoundOverrides).length > 0) {
+      const existing = extraData.misound;
+      extraData = {
+        ...extraData,
+        misound: {
+          ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
+          ...misoundOverrides,
+        },
+      };
+    }
+
     return {
-      volume: source.volume,
-      audioUrl: source.audioUrl,
-      playCount: source.playCount,
-      playInterval: source.playInterval,
+      title: source.title,
+      content: source.content == null ? '' : source.content,
+      type: source.type || 'text',
+      url: source.url || '',
+      extraData,
     };
   }
 
@@ -39,15 +76,11 @@ class PushController {
 
       // 支持 POST body 或 GET query 参数
       const source = req.method === 'GET' ? req.query : req.body;
-      const { title, type = 'text', extraData } = source;
-      // content 可空：小爱音箱可仅传 audioUrl
-      const content = source.content == null ? '' : source.content;
-      const url = source.url || '';
-      const misoundOverrides = PushController._extractMisoundOverrides(source);
+      const message = PushController._buildMessage(source);
 
       const result = await PushService.pushByToken(
         token,
-        { title, content, type, url, extraData, ...misoundOverrides },
+        message,
         getRealIP(req),
         req.requestId
       );
@@ -69,15 +102,12 @@ class PushController {
   static async pushByEndpoint(req, res) {
     try {
       const endpointId = parseInt(req.params.endpointId);
-      const { title, type = 'text', extraData } = req.body;
-      const content = req.body.content == null ? '' : req.body.content;
-      const url = req.body.url || '';
-      const misoundOverrides = PushController._extractMisoundOverrides(req.body);
+      const message = PushController._buildMessage(req.body);
 
       const result = await PushService.pushByEndpoint(
         endpointId,
         req.user.userId,
-        { title, content, type, url, extraData, ...misoundOverrides },
+        message,
         getRealIP(req),
         req.requestId
       );
@@ -102,15 +132,12 @@ class PushController {
   static async pushByChannel(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const { title, type = 'text', extraData } = req.body;
-      const content = req.body.content == null ? '' : req.body.content;
-      const url = req.body.url || '';
-      const misoundOverrides = PushController._extractMisoundOverrides(req.body);
+      const message = PushController._buildMessage(req.body);
 
       const result = await PushService.pushByChannel(
         channelId,
         req.user.userId,
-        { title, content, type, url, extraData, ...misoundOverrides },
+        message,
         getRealIP(req),
         req.requestId
       );

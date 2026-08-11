@@ -54,7 +54,12 @@ app.use(requestIdMiddleware);
 
 // 请求日志中间件
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.originalUrl}`, {
+  // 不记录 query，并对仍兼容的路径凭证做脱敏。
+  const safePath = req.path.replace(
+    /^(\/api\/(?:push|inbound)\/)[^/]+/,
+    '$1***'
+  );
+  logger.info(`${req.method} ${safePath}`, {
     requestId: req.requestId,
     ip: getRealIP(req),
     userAgent: req.get('User-Agent'),

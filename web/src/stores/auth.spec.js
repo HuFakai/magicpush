@@ -5,6 +5,7 @@ vi.mock('@/api/auth', () => ({
   login: vi.fn(),
   register: vi.fn(),
   refreshToken: vi.fn(),
+  logout: vi.fn(),
 }))
 
 vi.mock('@/utils/request', () => ({
@@ -12,7 +13,7 @@ vi.mock('@/utils/request', () => ({
 }))
 
 import { useAuthStore } from '@/stores/auth'
-import { login, register, refreshToken } from '@/api/auth'
+import { login, register, refreshToken, logout } from '@/api/auth'
 import { resetRefreshState } from '@/utils/request'
 
 const authData = { user: { id: 1, name: 'alice' }, accessToken: 'at', refreshToken: 'rt' }
@@ -75,10 +76,12 @@ describe('auth store', () => {
     expect(store.accessToken).toBe('at')
   })
 
-  it('logout clears auth data', () => {
+  it('logout revokes refresh token and clears auth data', async () => {
     const store = useAuthStore()
     store.setAuthData(authData)
-    store.logout()
+    logout.mockResolvedValue({ success: true })
+    await store.logout()
+    expect(logout).toHaveBeenCalledWith('rt')
     expect(store.accessToken).toBe('')
     expect(localStorage.getItem('accessToken')).toBeNull()
   })

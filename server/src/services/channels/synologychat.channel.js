@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * 群晖 Chat (Synology Chat) 渠道适配器
@@ -31,6 +32,7 @@ class SynologyChatChannel extends BaseChannel {
   }
 
   async send(message) {
+    const safeTarget = await resolveSafeHttpUrl(this.serverUrl);
     const { title, content, type } = message;
 
     // 拼接标题和内容
@@ -59,6 +61,9 @@ class SynologyChatChannel extends BaseChannel {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       timeout: 15000,
+      maxRedirects: 0,
+      maxContentLength: 1024 * 1024,
+      lookup: safeTarget.lookup,
     });
 
     const data = response.data;
@@ -77,9 +82,9 @@ class SynologyChatChannel extends BaseChannel {
       return { valid: false, message: '服务地址不能为空' };
     }
     try {
-      new URL(config.serverUrl);
-    } catch {
-      return { valid: false, message: '服务地址格式不正确' };
+      parseHttpUrl(config.serverUrl);
+    } catch (error) {
+      return { valid: false, message: error.message };
     }
     if (!config.token || config.token.trim() === '') {
       return { valid: false, message: 'Token 不能为空' };

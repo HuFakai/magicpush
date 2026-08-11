@@ -226,7 +226,7 @@
 
         <div v-if="selectedLog.response">
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">响应数据</p>
-          <pre class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs overflow-x-auto">{{ JSON.stringify(JSON.parse(selectedLog.response), null, 2) }}</pre>
+          <pre class="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs overflow-x-auto">{{ formatResponse(selectedLog.response) }}</pre>
         </div>
       </div>
     </el-dialog>
@@ -314,6 +314,15 @@ const getChannelTypeName = (type) => {
 
 const formatDate = (date) => {
   return new Date(date).toLocaleString('zh-CN')
+}
+
+const formatResponse = (response) => {
+  if (typeof response !== 'string') return JSON.stringify(response, null, 2)
+  try {
+    return JSON.stringify(JSON.parse(response), null, 2)
+  } catch {
+    return response
+  }
 }
 
 const loadData = async () => {

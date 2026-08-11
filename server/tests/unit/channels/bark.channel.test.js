@@ -20,6 +20,13 @@ require.cache[axiosPath] = {
   exports: { post: (url, body, config) => postImpl(url, body, config) },
 };
 
+const safeUrlPath = require.resolve('../../../src/utils/safeUrl');
+const safeUrl = require(safeUrlPath);
+require.cache[safeUrlPath].exports = {
+  ...safeUrl,
+  resolveSafeHttpUrl: async url => ({ url, lookup: () => {} }),
+};
+
 const BarkChannel = require('../../../src/services/channels/bark.channel');
 
 beforeEach(() => {
@@ -42,6 +49,7 @@ test('send：text 类型原样透传内容', async () => {
   assert.strictEqual(lastPost.body.device_key, 'k');
   assert.strictEqual(lastPost.body.body, 'C');
   assert.strictEqual(lastPost.body.level, 'active');
+  assert.strictEqual(lastPost.config.maxRedirects, 0);
 });
 
 test('send：markdown 类型剥离 Markdown 语法', async () => {

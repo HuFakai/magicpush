@@ -232,7 +232,7 @@ class UserController {
               .map(name => channelNameMap[name])
               .filter(id => id !== undefined);
             if (channelIds.length > 0) {
-              await EndpointModel.setChannels(newEndpoint.id, channelIds);
+              await EndpointModel.setChannels(newEndpoint.id, userId, channelIds);
             }
           }
 

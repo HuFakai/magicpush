@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const axios = require('axios');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl } = require('../../utils/safeUrl');
 
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 const BOT_TYPE = '3';
@@ -13,6 +14,14 @@ class IlinkClient {
   constructor({ baseUrl = DEFAULT_BASE_URL, token }) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.token = token;
+    this._safeBaseUrlPromise = null;
+  }
+
+  _assertSafeBaseUrl() {
+    if (!this._safeBaseUrlPromise) {
+      this._safeBaseUrlPromise = resolveSafeHttpUrl(this.baseUrl);
+    }
+    return this._safeBaseUrlPromise;
   }
 
   /**
@@ -48,10 +57,13 @@ class IlinkClient {
    * @returns {{ qrcode: string, qrcodeUrl: string }}
    */
   async getQRCode() {
+    const safeTarget = await this._assertSafeBaseUrl();
     const { data } = await axios.get(`${this.baseUrl}/ilink/bot/get_bot_qrcode`, {
       params: { bot_type: BOT_TYPE },
       headers: this._headers(),
       timeout: 15000,
+      maxRedirects: 0,
+      lookup: safeTarget.lookup,
     });
     logger.debug('获取 ClawBot 二维码响应: %j', data);
     return {
@@ -66,10 +78,13 @@ class IlinkClient {
    * @returns {{ status: string, token?: string, botId?: string, userId?: string, baseUrl?: string }}
    */
   async pollQRStatus(qrcode) {
+    const safeTarget = await this._assertSafeBaseUrl();
     const { data } = await axios.get(`${this.baseUrl}/ilink/bot/get_qrcode_status`, {
       params: { qrcode },
       headers: this._headers(),
       timeout: 25000,
+      maxRedirects: 0,
+      lookup: safeTarget.lookup,
     });
 
     logger.debug('ClawBot 轮询响应 qrcode=%s: %j', qrcode, data);
@@ -110,6 +125,7 @@ class IlinkClient {
    * @param {string} [params.contextToken] - 上下文 Token（可选）
    */
   async sendTextMessage({ toUserId, text, contextToken }) {
+    const safeTarget = await this._assertSafeBaseUrl();
     const body = {
       msg: {
         from_user_id: '',
@@ -129,6 +145,8 @@ class IlinkClient {
     const { data } = await axios.post(`${this.baseUrl}/ilink/bot/sendmessage`, body, {
       headers: this._headers(),
       timeout: 15000,
+      maxRedirects: 0,
+      lookup: safeTarget.lookup,
     });
 
     logger.debug('ClawBot 发送消息响应: %j', data);
@@ -152,6 +170,7 @@ class IlinkClient {
    * @returns {Promise<Object>} { ret, msgs, get_updates_buf, longpolling_timeout_ms }
    */
   async getUpdates({ getUpdatesBuf = '' }) {
+    const safeTarget = await this._assertSafeBaseUrl();
     const body = {
       get_updates_buf: getUpdatesBuf,
       base_info: { channel_version: '1.0.0' },
@@ -160,6 +179,8 @@ class IlinkClient {
     const { data } = await axios.post(`${this.baseUrl}/ilink/bot/getupdates`, body, {
       headers: this._headers(),
       timeout: 60000,
+      maxRedirects: 0,
+      lookup: safeTarget.lookup,
     });
 
     return data;

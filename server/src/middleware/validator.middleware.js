@@ -112,6 +112,11 @@ const createEndpointValidation = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('接口描述不能超过200个字符'),
+  body('token')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ min: 24, max: 100 })
+    .withMessage('自定义令牌长度必须在24-100个字符之间'),
   handleValidationErrors,
 ];
 
@@ -137,10 +142,10 @@ const updateEndpointValidation = [
     .isBoolean()
     .withMessage('状态必须是布尔值'),
   body('token')
-    .optional()
+    .optional({ nullable: true })
     .trim()
-    .isLength({ min: 6, max: 100 })
-    .withMessage('令牌长度必须在6-100个字符之间'),
+    .isLength({ min: 24, max: 100 })
+    .withMessage('令牌长度必须在24-100个字符之间'),
   handleValidationErrors,
 ];
 
@@ -152,10 +157,24 @@ const validateTokenValidation = [
     .notEmpty()
     .withMessage('令牌不能为空')
     .trim()
-    .isLength({ min: 6, max: 100 })
-    .withMessage('令牌长度必须在6-100个字符之间'),
+    .isLength({ min: 24, max: 100 })
+    .withMessage('令牌长度必须在24-100个字符之间'),
   handleValidationErrors,
 ];
+
+function getMisoundAudioUrl(source) {
+  if (!source) return null;
+  if (source.audioUrl) return source.audioUrl;
+  let extraData = source.extraData;
+  if (typeof extraData === 'string') {
+    try {
+      extraData = JSON.parse(extraData);
+    } catch {
+      return null;
+    }
+  }
+  return extraData?.misound?.audioUrl || null;
+}
 
 /**
  * 推送消息验证规则
@@ -167,13 +186,13 @@ const pushMessageValidation = [
     .isLength({ max: 200 })
     .withMessage('标题不能超过200个字符'),
 
-  // content 默认可空：小爱音箱可仅用 audioUrl 推送；其他渠道仍建议传 content
+  // 最终是否允许空 content 由 service 根据实际目标渠道判定。
   body('content')
     .optional({ nullable: true })
     .custom((value, { req }) => {
       const content = value == null ? '' : String(value);
       const source = req.method === 'GET' ? req.query : req.body;
-      const audioUrl = source && source.audioUrl;
+      const audioUrl = getMisoundAudioUrl(source);
       if (!content.trim() && !audioUrl) {
         throw new Error('消息内容不能为空（小爱音箱可仅传 audioUrl）');
       }
@@ -210,7 +229,63 @@ const pushMessageValidation = [
     .optional()
     .isString()
     .isLength({ max: 2000 })
-    .withMessage('audioUrl 长度不能超过2000'),
+    .withMessage('audioUrl 长度不能超过2000')
+    .isURL({ protocols: ['http', 'https'], require_protocol: true })
+    .withMessage('audioUrl 必须是有效的 http(s) URL'),
+  body('extraData.misound.audioUrl')
+    .optional()
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('extraData.misound.audioUrl 长度不能超过2000')
+    .isURL({ protocols: ['http', 'https'], require_protocol: true })
+    .withMessage('extraData.misound.audioUrl 必须是有效的 http(s) URL'),
+  handleValidationErrors,
+];
+
+/**
+ * GET 推送使用 query 参数，需要与 POST body 使用同等校验强度。
+ */
+const pushQueryValidation = [
+  query('title')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('标题不能超过200个字符'),
+  query('content')
+    .optional({ nullable: true })
+    .custom((value, { req }) => {
+      const content = value == null ? '' : String(value);
+      if (!content.trim() && !getMisoundAudioUrl(req.query)) {
+        throw new Error('消息内容不能为空（小爱音箱可仅传 audioUrl）');
+      }
+      if (content.length > 5000) {
+        throw new Error('消息内容不能超过5000个字符');
+      }
+      return true;
+    }),
+  query('type')
+    .optional()
+    .isIn(['text', 'markdown', 'html'])
+    .withMessage('消息类型必须是text、markdown或html'),
+  query('extraData')
+    .optional()
+    .custom(value => {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('extraData 必须是 JSON 对象');
+      }
+      return true;
+    })
+    .withMessage('extraData 必须是合法的 JSON 对象'),
+  query('volume').optional().isInt({ min: 0, max: 100 }).withMessage('volume 必须是 0-100 的整数'),
+  query('playCount').optional().isInt({ min: 1, max: 10 }).withMessage('playCount 必须是 1-10 的整数'),
+  query('playInterval').optional().isFloat({ min: 0, max: 300 }).withMessage('playInterval 必须是 0-300 的数字'),
+  query('audioUrl')
+    .optional()
+    .isLength({ max: 2000 })
+    .withMessage('audioUrl 长度不能超过2000')
+    .isURL({ protocols: ['http', 'https'], require_protocol: true })
+    .withMessage('audioUrl 必须是有效的 http(s) URL'),
   handleValidationErrors,
 ];
 
@@ -239,6 +314,7 @@ module.exports = {
   updateEndpointValidation,
   validateTokenValidation,
   pushMessageValidation,
+  pushQueryValidation,
   paginationValidation,
   handleValidationErrors,
 };

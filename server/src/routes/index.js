@@ -12,6 +12,7 @@ const logRoutes = require('./log.routes');
 const adminRoutes = require('./admin.routes');
 const yuanbaobotRoutes = require('./yuanbaobot.routes');
 const qqbotRoutes = require('./qqbot.routes');
+const mediaRoutes = require('./media.routes');
 const authenticate = require('../middleware/auth.middleware');
 const { healthLimiter } = require('../middleware/rateLimit.middleware');
 const logger = require('../utils/logger');
@@ -65,6 +66,9 @@ router.get('/health', healthLimiter, (req, res) => {
 
 // 版本信息（公开接口）
 router.use('/version', versionRoutes);
+
+// 上传媒体的公开读取入口（文件名为随机 UUID）
+router.use('/media', mediaRoutes);
 
 // 认证相关路由
 router.use('/auth', authRoutes);

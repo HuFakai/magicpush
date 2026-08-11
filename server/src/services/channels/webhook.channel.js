@@ -1,6 +1,7 @@
 const axios = require('axios');
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { resolveSafeHttpUrl, parseHttpUrl } = require('../../utils/safeUrl');
 
 /**
  * Webhook 渠道适配器
@@ -92,6 +93,7 @@ class WebhookChannel extends BaseChannel {
 
   async send(message) {
     try {
+      const safeTarget = await resolveSafeHttpUrl(this.url);
       const body = this.renderBody(message);
       const headers = {
         'Content-Type': 'application/json',
@@ -103,6 +105,9 @@ class WebhookChannel extends BaseChannel {
         url: this.url,
         headers,
         timeout: 30000,
+        maxRedirects: 0,
+        maxContentLength: 1024 * 1024,
+        lookup: safeTarget.lookup,
       };
 
       // 根据方法添加数据
@@ -137,9 +142,9 @@ class WebhookChannel extends BaseChannel {
     }
 
     try {
-      new URL(config.url);
-    } catch {
-      return { valid: false, message: '无效的 URL 格式' };
+      parseHttpUrl(config.url);
+    } catch (error) {
+      return { valid: false, message: error.message };
     }
 
     const validMethods = ['GET', 'POST', 'PUT', 'PATCH'];

@@ -50,3 +50,19 @@ export const confirmMiBind = (data) => {
 export const rebindMiChannel = (channelId, data) => {
   return request.put(`/channels/misound/qr/${channelId}/rebind`, data)
 }
+
+/**
+ * 上传小爱音箱播放音频，服务器会返回可供音箱拉取的公开 URL。
+ *
+ * @param {File} file
+ * @param {(event: ProgressEvent) => void} onUploadProgress
+ */
+export const uploadMisoundAudio = (file, onUploadProgress) => {
+  return request.post('/channels/misound/audio', file, {
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+    },
+    timeout: 120000,
+    onUploadProgress,
+  })
+}

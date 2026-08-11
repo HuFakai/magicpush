@@ -22,6 +22,13 @@ require.cache[axiosPath] = {
   exports: { post: (...a) => postImpl(...a) },
 };
 
+const safeUrlPath = require.resolve('../../../src/utils/safeUrl');
+const safeUrl = require(safeUrlPath);
+require.cache[safeUrlPath].exports = {
+  ...safeUrl,
+  resolveSafeHttpUrl: async url => ({ url, lookup: () => {} }),
+};
+
 const GotifyChannel = require('../../../src/services/channels/gotify.channel');
 
 const URL = 'https://gotify.example.com/';
@@ -59,6 +66,7 @@ test('send：text 类型构建 body 与鉴权头', async () => {
   assert.strictEqual(lastPost.body.message, 'C');
   assert.strictEqual(lastPost.body.priority, 3);
   assert.strictEqual(lastPost.config.headers['X-Gotify-Key'], 'tok');
+  assert.strictEqual(lastPost.config.maxRedirects, 0);
   assert.deepStrictEqual(res, { id: 1, message: 'ok' });
 });
 

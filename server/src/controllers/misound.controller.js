@@ -10,8 +10,70 @@ const { createSession, getSession, deleteSession } = require('../services/xiaomi
 const ChannelService = require('../services/channel.service');
 const ResponseUtil = require('../utils/response');
 const logger = require('../utils/logger');
+const MisoundAudioService = require('../services/misound-audio.service');
+
+function getPublicBaseUrl(req) {
+  const configuredBaseUrl = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  if (configuredBaseUrl) {
+    try {
+      const parsed = new URL(configuredBaseUrl);
+      if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) {
+        return parsed.toString().replace(/\/$/, '');
+      }
+      logger.warn('[Misound] PUBLIC_BASE_URL 必须是不含凭据的 http(s) 地址，已回退请求地址');
+    } catch {
+      logger.warn('[Misound] PUBLIC_BASE_URL 格式无效，已回退请求地址');
+    }
+  }
+  return `${req.protocol}://${req.get('host')}`;
+}
 
 class MisoundController {
+  /**
+   * 上传小爱音箱在线音频。文件存入持久化数据目录并返回公开访问地址。
+   */
+  static async uploadAudio(req, res) {
+    try {
+      const audio = await MisoundAudioService.saveAudio(req.user.userId, req.body);
+      const url = `${getPublicBaseUrl(req)}${audio.relativeUrl}`;
+      logger.info(`[Misound] 用户 ${req.user.userId} 上传音频成功: ${audio.filename}`);
+      return ResponseUtil.created(res, {
+        url,
+        filename: audio.filename,
+        mimeType: audio.mimeType,
+        size: audio.size,
+      }, '音频上传成功');
+    } catch (error) {
+      logger.warn(`[Misound] 音频上传失败: ${error.message}`);
+      return ResponseUtil.badRequest(res, error.message);
+    }
+  }
+
+  /**
+   * 公开提供已上传音频，供小爱音箱按 URL 拉取；UUID 文件名承担不可猜测性。
+   */
+  static async serveAudio(req, res, next) {
+    try {
+      const audio = await MisoundAudioService.getAudioFile(req.params.userId, req.params.filename);
+      res.set({
+        'Content-Type': audio.mimeType,
+        'Content-Length': audio.size,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Access-Control-Allow-Origin': '*',
+      });
+      return res.sendFile(audio.filePath, error => {
+        if (error && !res.headersSent) next(error);
+      });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return ResponseUtil.notFound(res, '音频文件不存在');
+      }
+      return ResponseUtil.badRequest(res, error.message);
+    }
+  }
+
   /**
    * 初始化扫码登录
    *
@@ -156,7 +218,7 @@ class MisoundController {
   static async rebindChannel(req, res) {
     try {
       const channelId = parseInt(req.params.channelId);
-      const { userId, passToken, did, ttsMode } = req.body;
+      const { userId, passToken, did, name, ttsMode } = req.body;
       const playbackConfig = MisoundController._extractPlaybackConfig(req.body);
 
       if (!userId || !passToken) {
@@ -164,6 +226,7 @@ class MisoundController {
       }
 
       const channel = await ChannelService.updateChannel(channelId, req.user.userId, {
+        ...(name !== undefined ? { name: String(name).trim() || '小爱音箱' } : {}),
         config: {
           userId,
           passToken,

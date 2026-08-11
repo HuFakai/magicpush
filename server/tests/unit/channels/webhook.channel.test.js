@@ -20,6 +20,13 @@ require.cache[axiosPath] = {
   exports: (config) => impl(config),
 };
 
+const safeUrlPath = require.resolve('../../../src/utils/safeUrl');
+const safeUrl = require(safeUrlPath);
+require.cache[safeUrlPath].exports = {
+  ...safeUrl,
+  resolveSafeHttpUrl: async url => ({ url, lookup: () => {} }),
+};
+
 const WebhookChannel = require('../../../src/services/channels/webhook.channel');
 
 beforeEach(() => {
@@ -87,6 +94,8 @@ test('send：POST 默认将 Body 放入 data', async () => {
   const res = await ch.send({ title: 'T', content: 'C', type: 'text' });
   assert.strictEqual(lastConfig.url, 'https://example.com/h');
   assert.strictEqual(lastConfig.method, 'POST');
+  assert.strictEqual(lastConfig.maxRedirects, 0);
+  assert.strictEqual(typeof lastConfig.lookup, 'function');
   assert.strictEqual(lastConfig.data.title, 'T');
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.messageId, 'req-1');

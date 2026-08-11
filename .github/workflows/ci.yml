@@ -31,6 +31,23 @@ jobs:
       - name: Test
         run: pnpm test
 
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build all-in-one image
+        run: docker build --tag magicpush:ci .
+
+      - name: Build split server image
+        run: docker build --file server/Dockerfile --tag magicpush-server:ci .
+
+      - name: Build split web image
+        run: docker build --file web/Dockerfile --tag magicpush-web:ci web
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -75,3 +92,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Production build
+        run: pnpm build

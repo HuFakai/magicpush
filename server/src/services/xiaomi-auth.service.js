@@ -70,7 +70,7 @@ const loginSessions = new Map();
 /**
  * 定期清理过期会话（每分钟执行一次）
  */
-setInterval(() => {
+const sessionCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, session] of loginSessions) {
     if (now - session.createdAt > SESSION_TTL) {
@@ -78,6 +78,8 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
+// 会话清理定时器不应单独阻止测试或无监听服务的进程退出。
+sessionCleanupTimer.unref?.();
 
 /**
  * 创建新的扫码登录会话
