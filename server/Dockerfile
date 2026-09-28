@@ -8,11 +8,13 @@ RUN pnpm install --frozen-lockfile --prod
 # 阶段2: 运行镜像
 FROM node:20-alpine AS final
 WORKDIR /app/server
+ENV HOME=/app/server/data/xiaoi-home
 COPY --from=deps /app/server/node_modules ./node_modules
 COPY server/package.json ./
 COPY server/src/ ./src/
 COPY version.json ../
-RUN mkdir -p data logs
+RUN mkdir -p data/xiaoi-home/.xiaoi logs \
+  && ln -s data/xiaoi-home/.xiaoi/.mi.json .mi.json
 
 EXPOSE 3000
 CMD ["sh", "-c", "node src/database/init.js && node src/app.js"]

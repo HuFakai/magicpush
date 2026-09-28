@@ -20,6 +20,7 @@ RUN pnpm run build
 # 阶段4: 最终运行镜像
 FROM node:20-alpine AS final
 WORKDIR /app
+ENV HOME=/app/server/data/xiaoi-home
 
 # 安装时区数据
 RUN apk add --no-cache tzdata
@@ -39,7 +40,8 @@ COPY --from=web-builder /app/web/dist ./web/dist
 COPY version.json ./
 
 # 创建数据目录
-RUN mkdir -p server/data server/logs
+RUN mkdir -p server/data/xiaoi-home/.xiaoi server/logs \
+  && ln -s data/xiaoi-home/.xiaoi/.mi.json server/.mi.json
 
 EXPOSE 3000
 

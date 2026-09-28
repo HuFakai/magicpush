@@ -1,5 +1,6 @@
 const BaseChannel = require('./base.channel');
 const logger = require('../../utils/logger');
+const { ensureCredentialCache } = require('../xiaoii-credential-cache.service');
 
 let speakerModule = null;
 
@@ -202,7 +203,11 @@ class MisoundChannel extends BaseChannel {
   async _ensureInitialized(force = false) {
     if (this._initialized && !force) return;
     const speaker = getSpeaker();
-    await speaker.init(this._buildSpeakerConfig());
+    const speakerConfig = this._buildSpeakerConfig();
+    // xiaoii 初始化与 401 自动刷新读取 .mi.json 的目录不同；先同步持久化
+    // 缓存和运行目录缓存，避免刷新时误报缺少账号密码并陷入 3 次重试。
+    await ensureCredentialCache(speakerConfig);
+    await speaker.init(speakerConfig);
     this._initialized = true;
     logger.info(`Misound 初始化完成: did=${this.did}, ttsMode=${this.ttsMode}`);
   }

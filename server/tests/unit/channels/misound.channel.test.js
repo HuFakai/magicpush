@@ -1,5 +1,22 @@
-const { test, beforeEach } = require('node:test');
+const { test, beforeEach, after } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// xiaoii 会按 HOME 读写 .xiaoi/.mi.json；测试必须与用户真实缓存隔离。
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'magicpush-misound-home-'));
+const originalHome = process.env.HOME;
+const originalRuntimeCacheFile = process.env.XIAOII_RUNTIME_CACHE_FILE;
+process.env.HOME = testHome;
+process.env.XIAOII_RUNTIME_CACHE_FILE = path.join(testHome, '.mi-runtime.json');
+after(() => {
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalRuntimeCacheFile === undefined) delete process.env.XIAOII_RUNTIME_CACHE_FILE;
+  else process.env.XIAOII_RUNTIME_CACHE_FILE = originalRuntimeCacheFile;
+  fs.rmSync(testHome, { recursive: true, force: true });
+});
 
 const speakerPath = require.resolve('xiaoii/lib/speaker');
 const speaker = {};

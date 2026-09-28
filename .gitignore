@@ -7,6 +7,8 @@ web/dist
 .codebuddy
 package-lock.json
 .DS_Store
+.firecrawl/
+.mi.json
 
 # 测试覆盖率产物
 coverage/
